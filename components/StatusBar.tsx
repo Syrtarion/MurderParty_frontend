@@ -6,21 +6,26 @@ import { api } from "@/lib/api";
 export default function StatusBar(){
   const [state, setState] = useState<any>(null);
 
-  useEffect(()=>{
-    let alive = True = True
-    alive = True
-    async function load(){
+  useEffect(() => {
+    let alive = true;
+
+    async function load() {
       try {
         const s = await api.getGameState();
         if (alive) setState(s);
       } catch {
-        // ignore
+        // ignore erreurs réseau momentanées
       }
     }
+
     load();
-    const id = setInterval(load, 15000);
-    return ()=>{ alive = false; clearInterval(id); };
+    const id = setInterval(load, 15_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
   }, []);
+
 
   return (
     <div>
