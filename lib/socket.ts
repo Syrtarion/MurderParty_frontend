@@ -1,8 +1,14 @@
-// lib/socket.ts
+// lib/socket.ts — WebSocket natif, avec isConnected, auto-reconnect (backoff), send, ping, re-identify
+
 let ws: WebSocket | null = null;
+let lastPlayerId: string | undefined;
+let reconnectAttempts = 0;
+let reconnectTimer: number | null = null;
 
 type Handler = (payload: any) => void;
-const listeners: Record<string, Set<Handler>> = {
+type EventType = "event" | "clue" | "secret_mission" | "identified" | "error" | "pong";
+
+const listeners: Record<EventType, Set<Handler>> = {
   event: new Set(),
   clue: new Set(),
   secret_mission: new Set(),
@@ -11,47 +17,85 @@ const listeners: Record<string, Set<Handler>> = {
   pong: new Set(),
 };
 
-// S'abonner à un type (event|clue|secret_mission|identified|error|pong)
-export function on(type: keyof typeof listeners, fn: Handler) {
+export function on(type: EventType, fn: Handler) {
   listeners[type].add(fn);
   return () => listeners[type].delete(fn);
 }
 
-function routeMessage(raw: MessageEvent) {
+function emit(type: EventType, payload: any) {
+  for (const fn of listeners[type] ?? []) fn(payload);
+}
+
+function routeMessage(ev: MessageEvent) {
   try {
-    const msg = JSON.parse(raw.data);
-    const type = msg?.type as string;
-    const payload = ("payload" in msg) ? msg.payload : msg; // fallback si pas de clé payload
-    if (type && listeners[type]) {
-      for (const fn of listeners[type].values()) fn(payload);
-    }
+    const msg = JSON.parse(ev.data);
+    const type = msg?.type as EventType | undefined;
+    const payload = Object.prototype.hasOwnProperty.call(msg, "payload") ? msg.payload : msg;
+    if (type && type in listeners) emit(type, payload);
   } catch {
-    // message non JSON : ignorer
+    // ignorer les messages non-JSON
   }
+}
+
+function wsUrlFromEnv() {
+  const base = (process.env.NEXT_PUBLIC_API_BASE ?? process.env.NEXT_PUBLIC_WS_URL ?? "http://localhost:8000")
+    .replace(/\/+$/, "");
+  return base.replace(/^http/, "ws") + "/ws";
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  const delay = Math.min(500 * Math.pow(2, reconnectAttempts), 5000); // 0.5s → 5s
+  reconnectTimer = (setTimeout(() => {
+    reconnectTimer = null;
+    reconnectAttempts += 1;
+    const pid = lastPlayerId;
+    try {
+      connect(pid);
+    } catch {
+      scheduleReconnect();
+    }
+  }, delay) as unknown) as number;
 }
 
 export function connect(playerId?: string) {
-  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return ws;
+  lastPlayerId = playerId ?? lastPlayerId;
 
-  // On part de NEXT_PUBLIC_API_BASE (REST) ou NEXT_PUBLIC_WS_URL si tu préfères
-  const base = (process.env.NEXT_PUBLIC_API_BASE ?? process.env.NEXT_PUBLIC_WS_URL ?? "http://localhost:8000")
-                .replace(/\/+$/, "");
-  const wsUrl = base.replace(/^http/, "ws") + "/ws";
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    return ws;
+  }
 
-  ws = new WebSocket(wsUrl);
-  ws.onmessage = routeMessage;
+  const url = wsUrlFromEnv();
+  ws = new WebSocket(url);
+
   ws.onopen = () => {
-    if (playerId) {
-      // >>> Conformément à ton protocole:
-      ws?.send(JSON.stringify({ type: "identify", player_id: playerId }));
+    reconnectAttempts = 0;
+    if (lastPlayerId) {
+      ws?.send(JSON.stringify({ type: "identify", player_id: lastPlayerId }));
     }
   };
-  ws.onclose = () => { /* tu peux ajouter un auto-retry ici si tu veux */ };
+
+  ws.onmessage = routeMessage;
+  ws.onclose = () => scheduleReconnect();
+  ws.onerror = () => { /* on laisse onclose gérer la reconnexion */ };
+
   return ws;
 }
 
-export function ping() {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "ping" }));
+export function isConnected() {
+  return !!ws && ws.readyState === WebSocket.OPEN;
+}
+
+export function send(type: string, payload?: any) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  try {
+    ws.send(JSON.stringify(payload !== undefined ? { type, payload } : { type }));
+    return true;
+  } catch {
+    return false;
   }
+}
+
+export function ping() {
+  send("ping");
 }

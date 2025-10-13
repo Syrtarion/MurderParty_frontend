@@ -1,54 +1,58 @@
-const BASE = process.env.NEXT_PUBLIC_API_BASE as string;
+// lib/api.ts — mini client HTTP (get/post JSON) avec gestion d'erreurs claire
 
-async function parse<T>(resp: Response): Promise<T> {
-  if (!resp.ok) {
-    let msg = `${resp.status} ${resp.statusText}`;
-    try { msg += `\n${await resp.text()}`; } catch {}
+const BASE = (process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000").replace(/\/+$/, "");
+
+async function jsonFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    // essaie d'extraire un message JSON {detail: "..."} sinon statusText
+    let msg = res.statusText || `HTTP ${res.status}`;
+    try {
+      const j = text ? JSON.parse(text) : {};
+      msg = j.detail || j.message || text || msg;
+    } catch {
+      if (text) msg = text;
+    }
     throw new Error(msg);
   }
-  return resp.json() as Promise<T>;
+
+  if (res.status === 204) {
+    // No Content
+    return undefined as unknown as T;
+  }
+  return (await res.json()) as T;
 }
 
 export const api = {
-  async getGameState<T=any>() {
-    const r = await fetch(`${BASE}/game/state`, { cache: 'no-store' });
-    return parse<T>(r);
+  // GET générique
+  async get<T = any>(path: string) {
+    return jsonFetch<T>(path, { method: "GET" });
   },
-  async joinPlayer<T=any>(name: string) {
-    const r = await fetch(`${BASE}/players/join`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
+
+  // POST générique (JSON)
+  async post<T = any>(path: string, body?: any) {
+    return jsonFetch<T>(path, {
+      method: "POST",
+      body: body !== undefined ? JSON.stringify(body) : undefined,
     });
-    return parse<T>(r);
   },
-  async triggerEvent<T=any>(payload: any, token?: string) {
-    const r = await fetch(`${BASE}/events/trigger`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      },
-      body: JSON.stringify(payload)
-    });
-    return parse<T>(r);
+
+  // DELETE générique
+  async del<T = any>(path: string) {
+    return jsonFetch<T>(path, { method: "DELETE" });
   },
-  async masterNextStep<T=any>(token?: string) {
-    const r = await fetch(`${BASE}/master/next_step`, {
-      method: 'POST',
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
-    });
-    return parse<T>(r);
-  },
-  async generateIndice<T=any>(kind: string, token?: string) {
-    const r = await fetch(`${BASE}/generate/indice`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      },
-      body: JSON.stringify({ type: kind })
-    });
-    return parse<T>(r);
+
+  // Raccourci utile pour l’état de jeu
+  async getGameState<T = any>() {
+    return jsonFetch<T>("/game/state", { method: "GET" });
   },
 };
