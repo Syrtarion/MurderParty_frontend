@@ -1,101 +1,53 @@
-// lib/socket.ts — WebSocket natif, avec isConnected, auto-reconnect (backoff), send, ping, re-identify
+// lib/socket.ts
+let socket: WebSocket | null = null;
+let connected = false;
+const listeners = new Map<string, Set<(payload: any) => void>>();
 
-let ws: WebSocket | null = null;
-let lastPlayerId: string | undefined;
-let reconnectAttempts = 0;
-let reconnectTimer: number | null = null;
+const WS_URL = (process.env.NEXT_PUBLIC_WS_URL ?? "http://localhost:8000").replace(/^http/, "ws");
 
-type Handler = (payload: any) => void;
-type EventType = "event" | "clue" | "secret_mission" | "identified" | "error" | "pong";
-
-const listeners: Record<EventType, Set<Handler>> = {
-  event: new Set(),
-  clue: new Set(),
-  secret_mission: new Set(),
-  identified: new Set(),
-  error: new Set(),
-  pong: new Set(),
-};
-
-export function on(type: EventType, fn: Handler) {
-  listeners[type].add(fn);
-  return () => listeners[type].delete(fn);
+function emit(type: string, payload: any) {
+  const set = listeners.get(type);
+  if (set) for (const cb of set) try { cb(payload); } catch {}
 }
 
-function emit(type: EventType, payload: any) {
-  for (const fn of listeners[type] ?? []) fn(payload);
+export function on(type: "event" | "clue" | string, cb: (payload: any) => void) {
+  let set = listeners.get(type);
+  if (!set) { set = new Set(); listeners.set(type, set); }
+  set.add(cb);
+  return () => { set!.delete(cb); };
 }
 
-function routeMessage(ev: MessageEvent) {
-  try {
-    const msg = JSON.parse(ev.data);
-    const type = msg?.type as EventType | undefined;
-    const payload = Object.prototype.hasOwnProperty.call(msg, "payload") ? msg.payload : msg;
-    if (type && type in listeners) emit(type, payload);
-  } catch {
-    // ignorer les messages non-JSON
-  }
-}
-
-function wsUrlFromEnv() {
-  const base = (process.env.NEXT_PUBLIC_API_BASE ?? process.env.NEXT_PUBLIC_WS_URL ?? "http://localhost:8000")
-    .replace(/\/+$/, "");
-  return base.replace(/^http/, "ws") + "/ws";
-}
-
-function scheduleReconnect() {
-  if (reconnectTimer) return;
-  const delay = Math.min(500 * Math.pow(2, reconnectAttempts), 5000); // 0.5s → 5s
-  reconnectTimer = (setTimeout(() => {
-    reconnectTimer = null;
-    reconnectAttempts += 1;
-    const pid = lastPlayerId;
-    try {
-      connect(pid);
-    } catch {
-      scheduleReconnect();
-    }
-  }, delay) as unknown) as number;
-}
+export function isConnected() { return connected; }
 
 export function connect(playerId?: string) {
-  lastPlayerId = playerId ?? lastPlayerId;
-
-  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-    return ws;
+  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+    // déjà en cours / connecté
+    return socket;
   }
 
-  const url = wsUrlFromEnv();
-  ws = new WebSocket(url);
+  // si ton back écoute sur /ws (ex: ws://host/ws)
+  const url = WS_URL.replace(/\/+$/, "") + "/ws";
+  socket = new WebSocket(url);
 
-  ws.onopen = () => {
-    reconnectAttempts = 0;
-    if (lastPlayerId) {
-      ws?.send(JSON.stringify({ type: "identify", player_id: lastPlayerId }));
+  socket.onopen = () => {
+    connected = true;
+    if (playerId) {
+      // identification côté serveur (MJ: "__mj__")
+      socket?.send(JSON.stringify({ type: "identify", player_id: playerId }));
     }
   };
 
-  ws.onmessage = routeMessage;
-  ws.onclose = () => scheduleReconnect();
-  ws.onerror = () => { /* on laisse onclose gérer la reconnexion */ };
+  socket.onclose = () => { connected = false; socket = null; setTimeout(()=>connect(playerId), 1500); };
 
-  return ws;
-}
+  socket.onmessage = (evt) => {
+    try {
+      const msg = JSON.parse(evt.data);
+      // Convention back validée : { type:"event", ... } ou { type:"clue", payload:{...}}
+      if (msg?.type === "event") emit("event", msg);
+      else if (msg?.type === "clue") emit("clue", msg.payload ?? msg);
+      else emit("message", msg);
+    } catch { /* ignore */ }
+  };
 
-export function isConnected() {
-  return !!ws && ws.readyState === WebSocket.OPEN;
-}
-
-export function send(type: string, payload?: any) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
-  try {
-    ws.send(JSON.stringify(payload !== undefined ? { type, payload } : { type }));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function ping() {
-  send("ping");
+  return socket;
 }
