@@ -1,59 +1,97 @@
-// lib/socket.ts — WebSocket natif compatible backend MurderParty
-let socket: WebSocket | null = null;
+// lib/socket.ts
+// WebSocket client minimal avec bus d'événements.
+// Réémet :
+//  - emit(msg.type, msg.payload)               → ex: "event"
+//  - si payload.kind → emit(`event:${kind}`, payload)  → ex: "event:envelopes_update"
+//
+// API:
+//  connect(playerId?: string)
+//  on(event, handler) → unsubscribe()
+//  isConnected()
+
+type Handler = (data: any) => void;
+
+let ws: WebSocket | null = null;
+let openPromise: Promise<void> | null = null;
 let connected = false;
-const listeners = new Map<string, Set<(payload: any) => void>>();
+const listeners = new Map<string, Set<Handler>>();
 
+const RAW = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000/ws";
+const WS_URL = RAW.replace(/^http/, "ws");
 
-const WS_URL = (process.env.NEXT_PUBLIC_WS_URL ?? "http://localhost:8000").replace(/^http/, "ws");
-
-
-function emit(type: string, payload: any) {
-const set = listeners.get(type);
-if (set) for (const cb of set) try { cb(payload); } catch {}
+export function isConnected() {
+  return connected;
 }
 
-
-export function on(type: "event" | "clue" | "message" | string, cb: (payload: any) => void) {
-let set = listeners.get(type);
-if (!set) { set = new Set(); listeners.set(type, set); }
-set.add(cb);
-return () => { set!.delete(cb); };
+export function on(event: string, handler: Handler) {
+  if (!listeners.has(event)) listeners.set(event, new Set());
+  listeners.get(event)!.add(handler);
+  return () => {
+    listeners.get(event)?.delete(handler);
+  };
 }
 
-
-export function isConnected() { return connected; }
-
-
-export function connect(playerId?: string) {
-if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
-return socket;
+function emit(event: string, data: any) {
+  const set = listeners.get(event);
+  if (set) {
+    for (const h of Array.from(set)) {
+      try { h(data); } catch { /* ignore */ }
+    }
+  }
 }
 
+function setupSocket() {
+  if (ws) return;
+  ws = new WebSocket(WS_URL);
 
-const url = WS_URL.replace(/\/+$/, "") + "/ws";
-socket = new WebSocket(url);
+  ws.onopen = () => {
+    connected = true;
+    emit("ws:open", null);
+  };
 
+  ws.onclose = () => {
+    connected = false;
+    emit("ws:close", null);
+    ws = null;
+    // retry auto
+    setTimeout(() => setupSocket(), 1500);
+  };
 
-socket.onopen = () => {
-connected = true;
-if (playerId) {
-socket?.send(JSON.stringify({ type: "identify", player_id: playerId }));
+  ws.onerror = () => {
+    emit("ws:error", null);
+  };
+
+  ws.onmessage = (e) => {
+    let msg: any;
+    try { msg = JSON.parse(e.data); } catch { return; }
+
+    const type = msg?.type ?? "event";
+    const payload = msg?.payload ?? msg;
+
+    // 1) type brut
+    emit(type, payload);
+
+    // 2) event:KIND si applicable
+    if (type === "event" && payload && typeof payload.kind === "string") {
+      emit(`event:${payload.kind}`, payload);
+    }
+  };
 }
-};
 
+export async function connect(playerId?: string) {
+  if (!ws) setupSocket();
 
-socket.onclose = () => { connected = false; socket = null; setTimeout(()=>connect(playerId), 1500); };
+  if (!openPromise) {
+    openPromise = new Promise<void>((resolve) => {
+      if (connected) return resolve();
+      const off = on("ws:open", () => { off(); resolve(); });
+    });
+  }
+  await openPromise;
 
-
-socket.onmessage = (evt) => {
-try {
-const msg = JSON.parse(evt.data);
-if (msg?.type === "event") emit("event", msg);
-else if (msg?.type === "clue") emit("clue", msg.payload ?? msg);
-else emit("message", msg);
-} catch { /* ignore */ }
-};
-
-
-return socket;
+  // identification côté serveur
+  if (ws && playerId) {
+    const msg = JSON.stringify({ type: "identify", payload: { player_id: playerId } });
+    ws.send(msg);
+  }
 }
