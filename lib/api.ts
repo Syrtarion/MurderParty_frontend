@@ -47,15 +47,28 @@
 
 
 import type { Mission } from "@/lib/types";
-
-
 export type { Mission } from "@/lib/types";
 
+function resolveApiBase(): string {
+  const raw = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+  try {
+    const url = new URL(raw);
+    if (typeof window !== "undefined") {
+      const hostname = window.location.hostname;
+      if (
+        hostname &&
+        (url.hostname === "localhost" || url.hostname === "127.0.0.1")
+      ) {
+        url.hostname = hostname;
+      }
+    }
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    return raw.replace(/\/+$/, "");
+  }
+}
 
-
-
-
-const BASE = (process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000").replace(/\/+$/, "");
+const API_BASE = resolveApiBase();
 
 
 
@@ -247,10 +260,10 @@ export const api = {
     const url = playerId
 
 
-      ? `${BASE}/game/state?player_id=${encodeURIComponent(playerId)}`
+      ? `${API_BASE}/game/state?player_id=${encodeURIComponent(playerId)}`
 
 
-      : `${BASE}/game/state`;
+      : `${API_BASE}/game/state`;
 
 
     return fetch(url, { cache: "no-store" }).then(parse);
@@ -265,7 +278,7 @@ export const api = {
   getCanon: (): Promise<any> =>
 
 
-    fetch(`${BASE}/game/canon`, { credentials: "include" }).then(parse),
+    fetch(`${API_BASE}/game/canon`, { credentials: "include" }).then(parse),
 
 
 
@@ -274,7 +287,7 @@ export const api = {
   register: (name: string, password: string): Promise<AuthOut> =>
 
 
-    fetch(`${BASE}/auth/register`, {
+    fetch(`${API_BASE}/auth/register`, {
 
 
       method: "POST",
@@ -295,7 +308,7 @@ export const api = {
   login: (name: string, password: string): Promise<AuthOut> =>
 
 
-    fetch(`${BASE}/auth/login`, {
+    fetch(`${API_BASE}/auth/login`, {
 
 
       method: "POST",
@@ -316,7 +329,7 @@ export const api = {
   me: (playerId: string): Promise<AuthOut> =>
 
 
-    fetch(`${BASE}/auth/me?player_id=${encodeURIComponent(playerId)}`).then(parse),
+    fetch(`${API_BASE}/auth/me?player_id=${encodeURIComponent(playerId)}`).then(parse),
 
 
 
@@ -334,7 +347,7 @@ export const api = {
   mjLogin: (username: string, password: string): Promise<{ ok: boolean; ttl: number }> =>
 
 
-    fetch(`${BASE}/auth/mj/login`, {
+    fetch(`${API_BASE}/auth/mj/login`, {
 
 
       method: "POST",
@@ -358,7 +371,7 @@ export const api = {
   mjLogout: (): Promise<{ ok: boolean }> =>
 
 
-    fetch(`${BASE}/auth/mj/logout`, { method: "POST", credentials: "include" }).then(parse),
+    fetch(`${API_BASE}/auth/mj/logout`, { method: "POST", credentials: "include" }).then(parse),
 
 
 
@@ -370,7 +383,7 @@ export const api = {
   partyStart: (): Promise<any> =>
 
 
-    fetch(`${BASE}/party/start`, { method: "POST", credentials: "include" }).then(parse),
+    fetch(`${API_BASE}/party/start`, { method: "POST", credentials: "include" }).then(parse),
 
 
 
@@ -379,7 +392,7 @@ export const api = {
   partyStatus: (): Promise<PartyStatus> =>
 
 
-    fetch(`${BASE}/party/status`, { credentials: "include" }).then(parse),
+    fetch(`${API_BASE}/party/status`, { credentials: "include" }).then(parse),
 
 
 
@@ -388,7 +401,7 @@ export const api = {
   masterLockJoin: (): Promise<any> =>
 
 
-    fetch(`${BASE}/master/lock_join`, { method: "POST", credentials: "include" }).then(parse),
+    fetch(`${API_BASE}/master/lock_join`, { method: "POST", credentials: "include" }).then(parse),
 
 
 
@@ -397,7 +410,7 @@ export const api = {
   masterUnlockJoin: (): Promise<any> =>
 
 
-    fetch(`${BASE}/master/unlock_join`, { method: "POST", credentials: "include" }).then(parse),
+    fetch(`${API_BASE}/master/unlock_join`, { method: "POST", credentials: "include" }).then(parse),
 
 
 
@@ -406,7 +419,7 @@ export const api = {
   envelopesSummary: (): Promise<any> =>
 
 
-    fetch(`${BASE}/master/envelopes/summary`, { credentials: "include" }).then(parse),
+    fetch(`${API_BASE}/master/envelopes/summary`, { credentials: "include" }).then(parse),
 
 
 
@@ -415,7 +428,7 @@ export const api = {
   postEnvelopesHidden: (): Promise<any> =>
 
 
-    fetch(`${BASE}/party/envelopes_hidden`, { method: "POST", credentials: "include" }).then(parse),
+    fetch(`${API_BASE}/party/envelopes_hidden`, { method: "POST", credentials: "include" }).then(parse),
 
 
 
@@ -424,7 +437,7 @@ export const api = {
   postRolesAssign: (): Promise<any> =>
 
 
-    fetch(`${BASE}/party/roles_assign`, { method: "POST", credentials: "include" }).then(parse),
+    fetch(`${API_BASE}/party/roles_assign`, { method: "POST", credentials: "include" }).then(parse),
 
 
 };

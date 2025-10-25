@@ -9,8 +9,46 @@ export type WsStatus = {
 const RETRY_DELAYS = [1500, 3000, 6000, 12000, 30000];
 const MAX_BUFFERED_EVENTS = 32;
 
-const RAW = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000/ws";
-const WS_URL = RAW.replace(/^http/i, "ws");
+const RAW_WS = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000/ws";
+
+function resolveWsUrl(raw: string): string {
+  const normalized = raw.startsWith("http://")
+    ? raw.replace("http://", "ws://")
+    : raw.startsWith("https://")
+    ? raw.replace("https://", "wss://")
+    : raw;
+
+  try {
+    const url = new URL(normalized);
+    if (typeof window !== "undefined") {
+      const hostname = window.location.hostname;
+      if (
+        hostname &&
+        (url.hostname === "localhost" || url.hostname === "127.0.0.1")
+      ) {
+        url.hostname = hostname;
+      }
+      if (!url.port) {
+        url.port =
+          new URL(normalized).port ||
+          (process.env.NEXT_PUBLIC_API_BASE
+            ? new URL(process.env.NEXT_PUBLIC_API_BASE).port
+            : window.location.port || (window.location.protocol === "https:" ? "443" : "80"));
+      }
+      if (window.location.protocol === "https:" && url.protocol !== "wss:") {
+        url.protocol = "wss:";
+      }
+      if (window.location.protocol !== "https:" && url.protocol !== "ws:") {
+        url.protocol = "ws:";
+      }
+    }
+    return url.toString();
+  } catch {
+    return normalized;
+  }
+}
+
+const WS_URL = resolveWsUrl(RAW_WS);
 
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
