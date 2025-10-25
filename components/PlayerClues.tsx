@@ -1,35 +1,59 @@
-'use client';
-import { useGameStore } from "@/lib/store";
+﻿'use client';
 
-function badge(kind: string){
-  const map: Record<string, {label:string; cls:string}> = {
-    crucial: { label: "Crucial",    cls: "bg-emerald-600/20 text-emerald-300 border-emerald-700/50" },
-    ambigu:  { label: "Ambigu",     cls: "bg-amber-600/20  text-amber-300  border-amber-700/50" },
-    decoratif:{label: "Faux-fuyant",cls: "bg-rose-600/20   text-rose-300   border-rose-700/50" },
-  };
-  return map[kind] ?? map.ambigu;
+import { useMemo } from "react";
+import { useGameClues } from "@/lib/store";
+import type { PlayerClue } from "@/lib/types";
+
+const BADGE_STYLE: Record<string, { label: string; cls: string }> = {
+  crucial: {
+    label: "Crucial",
+    cls: "badge--crucial",
+  },
+  ambigu: {
+    label: "Ambigu",
+    cls: "badge--ambigu",
+  },
+  decoratif: {
+    label: "Faux-fuyant",
+    cls: "badge--faux",
+  },
+  faux_fuyant: {
+    label: "Faux-fuyant",
+    cls: "badge--faux",
+  },
+};
+
+function getBadge(clue: PlayerClue) {
+  return BADGE_STYLE[clue.kind] ?? BADGE_STYLE.ambigu;
 }
 
-export default function PlayerClues(){
-  const clues = useGameStore(s => s.clues);
-  const sorted = [...clues].reverse(); // derniers en premier
+export default function PlayerClues() {
+  const clues = useGameClues();
+  const ordered = useMemo(() => [...clues].reverse(), [clues]);
 
   return (
     <div>
-      <h3 className="font-semibold mb-2">Mes indices</h3>
+      <h3 className="mb-2 font-semibold">Mes indices</h3>
       <ul className="space-y-2">
-        {sorted.map(c=>{
-          const b = badge(c.kind);
+        {ordered.map((clue) => {
+          const badge = getBadge(clue);
           return (
-            <li key={c.id} className="p-3 rounded-xl border bg-neutral-900/50 border-neutral-800">
-              <div className={`inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full border ${b.cls}`}>
-                {b.label}
+            <li
+              key={clue.id}
+              className="space-y-2 rounded-xl border border-subtle bg-surface p-3 text-sm"
+            >
+              <div
+                className={`badge ${badge.cls}`}
+              >
+                {badge.label}
               </div>
-              <p className="mt-2 text-sm leading-relaxed">{c.text}</p>
+              <p className="mt-2 text-sm leading-relaxed">{clue.text}</p>
             </li>
           );
         })}
-        {sorted.length===0 && <li className="text-sm opacity-70">Aucun indice pour l’instant.</li>}
+        {ordered.length === 0 && (
+          <li className="text-sm text-muted">Aucun indice pour l'instant.</li>
+        )}
       </ul>
     </div>
   );

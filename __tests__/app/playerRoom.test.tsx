@@ -41,17 +41,27 @@ const storeState = {
   clues: [] as any[],
 };
 
-const pushEvent = jest.fn();
-const addIndice = jest.fn();
+const pushEvent = jest.fn((event: any) => {
+  storeState.events.push(event);
+});
+const addClue = jest.fn((clue: any) => {
+  storeState.clues.push(clue);
+});
+const setPlayer = jest.fn();
+const resetStore = jest.fn(() => {
+  storeState.events = [];
+  storeState.clues = [];
+});
 
 jest.mock("@/lib/store", () => ({
-  useGameStore: (selector: any) =>
-    selector({
-      events: storeState.events,
-      clues: storeState.clues,
-      pushEvent,
-      addIndice,
-    }),
+  useGameActions: () => ({
+    pushEvent,
+    addClue,
+    setPlayer,
+    reset: resetStore,
+  }),
+  useGameEvents: () => storeState.events,
+  useGameClues: () => storeState.clues,
 }));
 
 jest.mock("next/navigation", () => ({
@@ -69,16 +79,12 @@ describe("Page joueur /room/[playerId]", () => {
     mockConnect.mockClear();
     mockIsConnected.mockClear();
     mockGetStatus.mockClear();
-    storeState.events.length = 0;
-    storeState.clues.length = 0;
-    pushEvent.mockReset();
-    pushEvent.mockImplementation((event) => {
-      storeState.events.push(event);
-    });
-    addIndice.mockReset();
-    addIndice.mockImplementation((indice) => {
-      storeState.clues.push(indice);
-    });
+    storeState.events = [];
+    storeState.clues = [];
+    pushEvent.mockClear();
+    addClue.mockClear();
+    setPlayer.mockClear();
+    resetStore.mockClear();
     mockGetGameState.mockReset();
     localStorage.clear();
 
@@ -96,26 +102,22 @@ describe("Page joueur /room/[playerId]", () => {
     });
   });
 
-  test("persiste le rôle et la mission reçus via WS et relance le chargement après reconnexion", async () => {
+  test("persiste le role et la mission recus via WS et relance le chargement apres reconnexion", async () => {
     render(<PlayerRoom />);
 
     await waitFor(() => expect(mockConnect).toHaveBeenCalledWith("player-007"));
     await waitFor(() => expect(mockGetGameState).toHaveBeenCalled());
 
     await act(async () => {
-      listeners["role_reveal"]?.forEach((fn) =>
-        fn({ role: "killer" })
-      );
+      listeners["role_reveal"]?.forEach((fn) => fn({ role: "killer" }));
     });
 
     expect(localStorage.getItem("mp_role")).toBe("killer");
-    expect(
-      screen.getByRole("button", { name: /afficher/i })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /afficher/i })).toBeInTheDocument();
 
     await act(async () => {
       listeners["secret_mission"]?.forEach((fn) =>
-        fn({ title: "Objectif secret", text: "Ne pas se faire repérer." })
+        fn({ title: "Objectif secret", text: "Ne pas se faire reperer." })
       );
     });
 

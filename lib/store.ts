@@ -1,24 +1,61 @@
-import { create } from "zustand";
+﻿import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
+import type { GameEvent, PlayerClue, PlayerState } from "@/lib/types";
 
-export type Indice = { id:string; text:string; kind:"crucial"|"faux_fuyant"|"ambigu"|"decoratif"; };
-export type EventLog = { id:string; type:string; payload:any; ts:number; };
-export type Player = { id:string; name:string; clues?:string[] };
+interface GameSlice {
+  player?: PlayerState;
+  clues: PlayerClue[];
+  events: GameEvent[];
+}
 
-type GameState = {
-  player?: Player;
-  clues: Indice[];
-  events: EventLog[];
-  setPlayer: (p: Player) => void;
-  addIndice: (i: Indice) => void;
-  pushEvent: (e: EventLog) => void;
+interface GameActions {
+  setPlayer: (player?: PlayerState) => void;
+  addClue: (clue: PlayerClue) => void;
+  pushEvent: (event: GameEvent) => void;
   reset: () => void;
-};
+}
 
-export const useGameStore = create<GameState>((set) => ({
+export type GameStore = GameSlice & GameActions;
+
+const initialState: GameSlice = {
+  player: undefined,
   clues: [],
   events: [],
+};
+
+export const useGameStore = create<GameStore>((set) => ({
+  ...initialState,
   setPlayer: (player) => set({ player }),
-  addIndice: (i) => set((s) => ({ clues: [...s.clues, i] })),
-  pushEvent: (e) => set((s) => ({ events: [e, ...s.events] })),
-  reset: () => set({ player: undefined, clues: [], events: [] })
+  addClue: (clue) =>
+    set((state) => ({
+      clues: [...state.clues, clue],
+    })),
+  pushEvent: (event) =>
+    set((state) => ({
+      events: [...state.events, event],
+    })),
+  reset: () =>
+    set(() => ({
+      player: undefined,
+      clues: [],
+      events: [],
+    })),
 }));
+
+export const selectPlayer = (state: GameStore) => state.player;
+export const selectClues = (state: GameStore) => state.clues;
+export const selectEvents = (state: GameStore) => state.events;
+
+export const useGamePlayer = () => useGameStore(selectPlayer);
+export const useGameClues = () => useGameStore(selectClues);
+export const useGameEvents = () => useGameStore(selectEvents);
+
+export const useGameActions = () =>
+  useGameStore(
+    useShallow(({ setPlayer, addClue, pushEvent, reset }) => ({
+      setPlayer,
+      addClue,
+      pushEvent,
+      reset,
+    }))
+  );

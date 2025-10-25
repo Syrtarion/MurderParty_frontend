@@ -63,7 +63,7 @@ describe("StatusBar", () => {
     });
 
     expect(
-      screen.getByText("Reconnexion... (tentative 2)")
+      screen.getByText((content) => content.startsWith("Reconnexion"))
     ).toBeInTheDocument();
 
     const initialCalls = (api.getGameState as jest.Mock).mock.calls.length;

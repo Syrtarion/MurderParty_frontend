@@ -2,10 +2,210 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light dark; }
-body { @apply bg-neutral-950 text-neutral-100; }
-.container { @apply mx-auto max-w-5xl px-4; }
-.card { @apply bg-neutral-900/60 rounded-2xl shadow-lg p-4 border border-neutral-800; }
-.btn { @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-neutral-700 hover:bg-neutral-800 transition; }
-.input { @apply px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 w-full outline-none focus:border-neutral-500; }
-.badge { @apply text-xs px-2 py-1 rounded-full bg-neutral-800 border border-neutral-700; }
+:root {
+  color-scheme: dark;
+  --color-surface: #060711;
+  --color-surface-raised: #11131f;
+  --color-border: #23263b;
+  --color-text: #f5f7ff;
+  --color-text-muted: #a9b0c9;
+  --color-button-neutral: #2a2f42;
+  --color-button-neutral-hover: #353b52;
+  --color-accent: #3b82f6;
+  --color-accent-hover: #2563eb;
+  --color-success: #22c55e;
+  --color-success-hover: #16a34a;
+  --color-danger: #f97316;
+  --color-danger-hover: #ea580c;
+  --focus-ring: rgba(59, 130, 246, 0.75);
+  --focus-ring-offset: rgba(8, 11, 18, 0.95);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --color-surface: #f7f8ff;
+    --color-surface-raised: #ffffff;
+    --color-border: #d8def8;
+    --color-text: #101222;
+    --color-text-muted: #505879;
+    --color-button-neutral: #e2e6fb;
+    --color-button-neutral-hover: #d5dbf7;
+    --color-accent: #2563eb;
+    --color-accent-hover: #1d4ed8;
+    --color-success: #16a34a;
+    --color-success-hover: #15803d;
+    --color-danger: #ea580c;
+    --color-danger-hover: #c2410c;
+    --focus-ring: rgba(37, 99, 235, 0.65);
+    --focus-ring-offset: rgba(255, 255, 255, 0.85);
+  }
+}
+
+@layer base {
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    font-feature-settings: "tnum";
+  }
+}
+
+@layer components {
+  .container {
+    @apply mx-auto max-w-5xl px-4;
+  }
+
+  .card {
+    background-color: var(--color-surface-raised);
+    border: 1px solid var(--color-border);
+    border-radius: 1rem;
+    padding: 1rem;
+    box-shadow: 0 25px 45px rgba(5, 8, 20, 0.35);
+  }
+
+  .btn-base {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.875rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .btn-neutral {
+    background-color: var(--color-button-neutral);
+    color: var(--color-text);
+  }
+
+  .btn-neutral:hover {
+    background-color: var(--color-button-neutral-hover);
+  }
+
+  .btn-primary {
+    background-color: var(--color-accent);
+    color: #ffffff;
+  }
+
+  .btn-primary:hover {
+    background-color: var(--color-accent-hover);
+  }
+
+  .btn-success {
+    background-color: var(--color-success);
+    color: #0c1a0d;
+  }
+
+  .btn-success:hover {
+    background-color: var(--color-success-hover);
+  }
+
+  .btn-danger {
+    background-color: var(--color-danger);
+    color: #2d0b03;
+  }
+
+  .btn-danger:hover {
+    background-color: var(--color-danger-hover);
+  }
+
+  .btn-base[disabled] {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .input {
+    background-color: var(--color-surface-raised);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    width: 100%;
+    transition: border-color 150ms ease;
+  }
+
+  .input:focus-visible {
+    border-color: var(--color-accent);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 9999px;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid var(--color-border);
+    background-color: var(--color-surface);
+  }
+
+  .badge--crucial {
+    border-color: rgba(34, 197, 94, 0.45);
+    color: var(--color-success);
+    background-color: rgba(34, 197, 94, 0.15);
+  }
+
+  .badge--ambigu {
+    border-color: rgba(245, 158, 11, 0.35);
+    color: #fbbf24;
+    background-color: rgba(245, 158, 11, 0.12);
+  }
+
+  .badge--faux {
+    border-color: rgba(248, 113, 113, 0.35);
+    color: #fca5a5;
+    background-color: rgba(248, 113, 113, 0.12);
+  }
+}
+
+@layer utilities {
+  .bg-surface {
+    background-color: var(--color-surface);
+  }
+
+  .bg-raised {
+    background-color: var(--color-surface-raised);
+  }
+
+  .bg-accent {
+    background-color: var(--color-accent);
+  }
+
+  .bg-danger {
+    background-color: var(--color-danger);
+  }
+
+  .bg-success {
+    background-color: var(--color-success);
+  }
+
+  .border-subtle {
+    border-color: var(--color-border);
+  }
+
+  .text-muted {
+    color: var(--color-text-muted);
+  }
+
+  .text-danger {
+    color: var(--color-danger);
+  }
+
+  .text-success {
+    color: var(--color-success);
+  }
+
+  .focus-ring {
+    outline: none;
+  }
+
+  .focus-ring:focus-visible {
+    box-shadow:
+      0 0 0 2px var(--focus-ring),
+      0 0 0 4px var(--focus-ring-offset);
+  }
+}

@@ -24,7 +24,7 @@ export default function StatusBar({ role = null, hasMission = false }: StatusBar
       setPhase(String(s.phase_label ?? "JOIN"));
       setLocked(Boolean(s.join_locked));
     } catch {
-      /* no-op */
+      // ignore refresh errors
     }
   }
 
@@ -65,48 +65,52 @@ export default function StatusBar({ role = null, hasMission = false }: StatusBar
   }, []);
 
   return (
-    <div className="w-full px-4 py-2 bg-neutral-950 border-b border-neutral-800 text-neutral-200 text-sm flex flex-wrap items-center gap-4 justify-between">
+    <header className="flex w-full flex-wrap items-center justify-between gap-4 border-b border-subtle bg-raised px-4 py-2 text-sm">
       <div className="flex items-center gap-2">
-        <span className="opacity-70">Phase</span>
-        <span className="px-2 py-0.5 rounded bg-neutral-800 text-neutral-100">{phase}</span>
+        <span className="text-muted">Phase</span>
+        <span className="rounded-md bg-surface px-2 py-0.5 text-xs font-semibold">{phase}</span>
       </div>
+
       <div className="flex items-center gap-3">
-        <span className="opacity-70">Inscriptions</span>
+        <span className="text-muted">Inscriptions</span>
         <span
-          className={`px-2 py-0.5 rounded ${
-            locked ? "bg-rose-900/60 text-rose-200" : "bg-emerald-900/60 text-emerald-200"
+          className={`rounded-md px-2 py-0.5 text-xs font-semibold ${
+            locked ? "bg-danger text-white" : "bg-success text-neutral-900"
           }`}
         >
           {locked ? "Fermées" : "Ouvertes"}
         </span>
         {offline && (
-          <span className="text-xs text-amber-300/90">
+          <span
+            className="text-xs text-muted"
+            role="status"
+            aria-live="polite"
+          >
             {reconnecting
-              ? `Reconnexion... (tentative ${Math.max(attempt, 1)})`
+              ? `Reconnexion… (tentative ${Math.max(attempt, 1)})`
               : "Mode secours"}
           </span>
         )}
       </div>
+
       {(role || hasMission) && (
         <div className="flex items-center gap-3 text-xs sm:text-sm">
           {role && (
             <span
-              className={`px-2 py-0.5 rounded font-semibold ${
-                role === "killer"
-                  ? "bg-rose-900/60 text-rose-200"
-                  : "bg-emerald-900/60 text-emerald-200"
+              className={`rounded-md px-2 py-0.5 font-semibold ${
+                role === "killer" ? "bg-danger text-white" : "bg-success text-neutral-900"
               }`}
             >
               Rôle : {role === "killer" ? "Killer" : "Innocent"}
             </span>
           )}
           {hasMission && (
-            <span className="px-2 py-0.5 rounded bg-blue-900/60 text-blue-200">
+            <span className="rounded-md bg-accent px-2 py-0.5 font-semibold text-xs text-white">
               Mission reçue
             </span>
           )}
         </div>
       )}
-    </div>
+    </header>
   );
 }

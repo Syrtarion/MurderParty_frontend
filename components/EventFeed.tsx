@@ -1,35 +1,62 @@
-'use client';
-import { useGameStore } from "@/lib/store";
+﻿'use client';
 
-function titleFor(e:any){
-  // tu peux enrichir selon tes events
-  if (e.type === "round_advance" || e.payload?.kind === "round_advance") return "→ Avancement de manche";
-  if (e.type === "identified") return "Connexion confirmée";
-  if (e.payload?.kind) return String(e.payload.kind).replaceAll("_"," ");
-  return e.type ?? "Événement";
+import { useMemo } from "react";
+import { useGameEvents } from "@/lib/store";
+import type { GameEvent } from "@/lib/types";
+
+function titleFor(event: GameEvent): string {
+  const payload = (event?.payload ?? {}) as { kind?: string };
+  if (event.type === "round_advance" || payload.kind === "round_advance") {
+    return "Avancement de manche";
+  }
+  if (event.type === "identified") {
+    return "Connexion confirmée";
+  }
+  if (payload.kind) {
+    return payload.kind.replaceAll("_", " ");
+  }
+  return event.type ?? "Événement";
 }
 
-function subtitleFor(e:any){
-  if (e.payload?.step != null) return `Étape : ${e.payload.step}`;
-  if (typeof e.payload?.text === "string") return e.payload.text;
+function subtitleFor(event: GameEvent): string {
+  const payload = (event?.payload ?? {}) as {
+    step?: number | string;
+    text?: string;
+  };
+  if (payload.step != null) {
+    return `Étape : ${payload.step}`;
+  }
+  if (typeof payload.text === "string" && payload.text.length > 0) {
+    return payload.text;
+  }
   return "";
 }
 
-export default function EventFeed(){
-  const events = useGameStore(s=>s.events);
-  const list = [...events].reverse();
+export default function EventFeed() {
+  const events = useGameEvents();
+  const ordered = useMemo(() => [...events].reverse(), [events]);
+
+  if (ordered.length === 0) {
+    return <div className="text-sm text-muted">Aucun événement pour l'instant.</div>;
+  }
 
   return (
     <div>
-      <ul className="space-y-2">
-        {list.map(ev=>(
-          <li key={ev.id} className="p-3 rounded-xl border bg-neutral-900/50 border-neutral-800">
-            <div className="text-sm font-medium">{titleFor(ev)}</div>
-            {subtitleFor(ev) && <div className="text-xs opacity-75 mt-1">{subtitleFor(ev)}</div>}
-            <div className="text-[10px] opacity-50 mt-1">{new Date(ev.ts).toLocaleTimeString()}</div>
+      <ul className="space-y-2" aria-live="polite" aria-label="Flux d'événements récents">
+        {ordered.map((event) => (
+          <li
+            key={event.id}
+            className="space-y-1 rounded-xl border border-subtle bg-surface p-3"
+          >
+            <div className="text-sm font-medium">{titleFor(event)}</div>
+            {subtitleFor(event) && (
+              <div className="text-xs text-muted">{subtitleFor(event)}</div>
+            )}
+            <div className="text-[10px] text-muted">
+              {new Date(event.ts).toLocaleTimeString()}
+            </div>
           </li>
         ))}
-        {list.length===0 && <li className="text-sm opacity-70">Aucun événement pour l’instant.</li>}
       </ul>
     </div>
   );

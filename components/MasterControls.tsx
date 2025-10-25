@@ -1,35 +1,41 @@
 'use client';
 
-import { ReactNode, useState } from "react";
+import { ReactNode, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 
-type BtnTone = "neutral" | "primary" | "danger" | "success";
+type ButtonTone = "neutral" | "primary" | "danger" | "success";
 
-function Btn({
-  children,
-  onClick,
-  busy,
-  tone = "neutral",
-}: {
+type ActionButtonProps = {
   children: ReactNode;
   onClick: () => void;
   busy?: boolean;
-  tone?: BtnTone;
-}) {
-  const toneCls: Record<BtnTone, string> = {
-    neutral: "bg-neutral-800 hover:bg-neutral-700 text-neutral-100",
-    primary: "bg-blue-600 hover:bg-blue-500 text-white",
-    danger: "bg-rose-600 hover:bg-rose-500 text-white",
-    success: "bg-emerald-600 hover:bg-emerald-500 text-white",
+  tone?: ButtonTone;
+};
+
+function ActionButton({ children, onClick, busy = false, tone = "neutral" }: ActionButtonProps) {
+  const toneClass: Record<ButtonTone, string> = {
+    neutral: "btn-neutral",
+    primary: "btn-primary",
+    danger: "btn-danger",
+    success: "btn-success",
   };
 
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={busy}
-      className={`px-3 py-2 rounded-md text-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${toneCls[tone]}`}
+      aria-busy={busy}
+      className={`btn-base focus-ring ${toneClass[tone]}`}
     >
-      {busy ? "…" : children}
+      {busy ? (
+        <>
+          <span className="sr-only">Action en cours…</span>
+          <span aria-hidden="true" className="animate-pulse">Patiente…</span>
+        </>
+      ) : (
+        children
+      )}
     </button>
   );
 }
@@ -38,84 +44,110 @@ type MasterControlsProps = {
   onActionDone?: () => void;
 };
 
-export default function MasterControls({ onActionDone }: MasterControlsProps) {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+type ControlDescriptor = {
+  key: string;
+  label: string;
+  tone: ButtonTone;
+  run: () => Promise<unknown>;
+};
 
-  async function run(tag: string, fn: () => Promise<any>) {
-    setBusy(tag);
-    setMsg(null);
+export default function MasterControls({ onActionDone }: MasterControlsProps) {
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [message, setMessage] = useState<string>("Prêt.");
+
+  async function execute(key: string, label: string, runner: () => Promise<unknown>) {
+    setBusyKey(key);
+    setMessage("Exécution en cours…");
     try {
-      const result = await fn();
-      setMsg(`${tag} • OK\n${JSON.stringify(result, null, 2)}`);
+      const result = await runner();
+      const serialised =
+        result && typeof result === "object"
+          ? JSON.stringify(result, null, 2)
+          : String(result ?? "OK");
+      setMessage(`✅ ${label}\n${serialised}`);
       onActionDone?.();
     } catch (error: any) {
-      setMsg(`${tag} • ERREUR : ${error?.message ?? String(error)}`);
+      setMessage(`❌ ${label}\n${error?.message ?? String(error)}`);
     } finally {
-      setBusy(null);
+      setBusyKey(null);
     }
   }
 
+  const controls: ControlDescriptor[] = useMemo(
+    () => [
+      {
+        key: "start",
+        label: "Initialiser la partie",
+        tone: "primary",
+        run: api.partyStart,
+      },
+      {
+        key: "lock",
+        label: "Verrouiller les inscriptions",
+        tone: "danger",
+        run: api.masterLockJoin,
+      },
+      {
+        key: "unlock",
+        label: "Déverrouiller les inscriptions",
+        tone: "success",
+        run: api.masterUnlockJoin,
+      },
+      {
+        key: "envelopes",
+        label: "Marquer les enveloppes comme cachées",
+        tone: "neutral",
+        run: api.postEnvelopesHidden,
+      },
+      {
+        key: "roles",
+        label: "Assigner rôles & missions",
+        tone: "primary",
+        run: api.postRolesAssign,
+      },
+      {
+        key: "session",
+        label: "Lancer la session (à venir)",
+        tone: "neutral",
+        run: async () => {
+          throw new Error("Fonctionnalité à venir (Lot C)");
+        },
+      },
+      {
+        key: "status",
+        label: "Afficher le statut",
+        tone: "neutral",
+        run: api.partyStatus,
+      },
+    ],
+    []
+  );
+
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-        <Btn
-          tone="primary"
-          busy={busy === "Initialiser"}
-          onClick={() => run("Initialiser", api.partyStart)}
-        >
-          🚀 Initialiser la partie
-        </Btn>
-        <Btn
-          tone="danger"
-          busy={busy === "Verrouiller"}
-          onClick={() => run("Verrouiller", api.masterLockJoin)}
-        >
-          🔒 Verrouiller inscriptions
-        </Btn>
-        <Btn
-          tone="success"
-          busy={busy === "Déverrouiller"}
-          onClick={() => run("Déverrouiller", api.masterUnlockJoin)}
-        >
-          🔓 Déverrouiller inscriptions
-        </Btn>
+    <section className="space-y-4" aria-labelledby="master-controls-heading">
+      <h2 id="master-controls-heading" className="text-sm font-semibold text-muted uppercase tracking-wide">
+        Actions MJ
+      </h2>
 
-        <Btn
-          busy={busy === "Enveloppes cachées"}
-          onClick={() => run("Enveloppes cachées", api.postEnvelopesHidden)}
-        >
-          📦 Enveloppes cachées
-        </Btn>
-        <Btn
-          busy={busy === "Assigner rôles & missions"}
-          onClick={() => run("Assigner rôles & missions", api.postRolesAssign)}
-        >
-          🧩 Rôles & missions
-        </Btn>
-
-        <Btn
-          busy={busy === "Démarrer session"}
-          onClick={() =>
-            run("Démarrer session", async () => {
-              throw new Error("À venir (Lot C)");
-            })
-          }
-        >
-          🎬 Démarrer session
-        </Btn>
-
-        <Btn busy={busy === "Status"} onClick={() => run("Status", api.partyStatus)}>
-          🩺 Status
-        </Btn>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {controls.map((control) => (
+          <ActionButton
+            key={control.key}
+            tone={control.tone}
+            busy={busyKey === control.key}
+            onClick={() => execute(control.key, control.label, control.run)}
+          >
+            {control.label}
+          </ActionButton>
+        ))}
       </div>
 
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-3">
-        <div className="text-xs text-neutral-400 mb-2">Journal</div>
-        <pre className="text-xs text-neutral-200 overflow-auto whitespace-pre-wrap">
-          {msg ?? "…"}
+      <div className="card space-y-2" role="status" aria-live="polite" aria-atomic="true">
+        <p className="text-xs font-medium text-muted">Journal</p>
+        <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-xs text-neutral-100">
+          {message}
         </pre>
       </div>
-    </div>
+    </section>
   );
 }

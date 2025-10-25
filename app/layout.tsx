@@ -2,7 +2,7 @@ import "../styles/globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Murder Party — Frontend",
+  title: "Murder Party - Frontend",
   description: "Client web pour la Murder Party (joueurs & MJ)",
 };
 
