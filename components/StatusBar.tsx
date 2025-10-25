@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { connect, on, isConnected } from "@/lib/socket";
+import { connect, getStatus, isConnected, on, type WsStatus } from "@/lib/socket";
 
 type StatusBarProps = {
   role?: "killer" | "innocent" | null;
@@ -12,7 +12,11 @@ type StatusBarProps = {
 export default function StatusBar({ role = null, hasMission = false }: StatusBarProps = {}) {
   const [phase, setPhase] = useState<string>("JOIN");
   const [locked, setLocked] = useState<boolean>(false);
-  const [offline, setOffline] = useState<boolean>(false);
+  const [wsStatus, setWsStatus] = useState<WsStatus>(() => getStatus());
+
+  const offline = !wsStatus.connected;
+  const reconnecting = wsStatus.reconnecting;
+  const attempt = wsStatus.attempt;
 
   async function refresh() {
     try {
@@ -28,24 +32,34 @@ export default function StatusBar({ role = null, hasMission = false }: StatusBar
     let alive = true;
     refresh();
 
-    connect();
+    void connect();
     const offPhase = on("event:phase_change", (ev: any) => {
       if (!alive) return;
       if (ev?.phase) setPhase(String(ev.phase));
     });
     const offLock = on("event:join_locked", () => alive && setLocked(true));
     const offUnlock = on("event:join_unlocked", () => alive && setLocked(false));
+    const offStatus = on("ws:status", (status: WsStatus) => {
+      if (!alive) return;
+      setWsStatus(status);
+    });
+    const offReconnect = on("ws:reconnect", () => {
+      if (!alive) return;
+      refresh();
+    });
     const interval = setInterval(() => {
-      const up = isConnected();
-      setOffline(!up);
-      if (!up) refresh();
-    }, 15_000);
+      if (!isConnected()) {
+        refresh();
+      }
+    }, 20_000);
 
     return () => {
       alive = false;
       offPhase();
       offLock();
       offUnlock();
+      offStatus();
+      offReconnect();
       clearInterval(interval);
     };
   }, []);
@@ -65,7 +79,13 @@ export default function StatusBar({ role = null, hasMission = false }: StatusBar
         >
           {locked ? "Fermées" : "Ouvertes"}
         </span>
-        {offline && <span className="text-xs text-amber-300/90">poll</span>}
+        {offline && (
+          <span className="text-xs text-amber-300/90">
+            {reconnecting
+              ? `Reconnexion... (tentative ${Math.max(attempt, 1)})`
+              : "Mode secours"}
+          </span>
+        )}
       </div>
       {(role || hasMission) && (
         <div className="flex items-center gap-3 text-xs sm:text-sm">

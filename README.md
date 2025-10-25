@@ -1,25 +1,25 @@
-# MurderParty – Frontend Next.js
+ï»¿# MurderParty â€“ Frontend Next.js
 
-Interface joueur & Maître de Jeu pour notre murder party. Next.js 14 (App Router), Tailwind CSS, Zustand, WebSocket natif.
-**Langue par défaut : français. Spoilers masqués côté MJ/Joueur par défaut.**
+Interface joueur & MaÃ®tre de Jeu pour notre murder party. Next.js 14 (App Router), Tailwind CSS, Zustand, WebSocket natif.
+**Langue par dÃ©faut : franÃ§ais. Spoilers masquÃ©s cÃ´tÃ© MJ/Joueur par dÃ©faut.**
 
 ---
 
 ## ?? Installation & scripts
 
-| Étape | Commande |
+| Ã‰tape | Commande |
 |-------|---------|
 | Installer | `npm install` |
-| Copier l’environnement | `cp .env.example .env.local` |
+| Copier lâ€™environnement | `cp .env.example .env.local` |
 | Lancer le dev server | `npm run dev` |
 | Build prod | `npm run build && npm run start` |
 | Linter *(ajouter ESLint avant)* | `npm run lint` |
 
-> Serveur Next : http://localhost:3000 • Node = 18 (CI utilise Node 20).
+> Serveur Next : http://localhost:3000 â€¢ Node = 18 (CI utilise Node 20).
 
 ---
 
-## ?? Variables d’environnement
+## ?? Variables dâ€™environnement
 
 | Variable | Description | Exemple |
 |----------|-------------|---------|
@@ -31,36 +31,36 @@ Interface joueur & Maître de Jeu pour notre murder party. Next.js 14 (App Router
 
 ## ?? Routing applicatif
 
-| Route | Rôle | Description |
+| Route | RÃ´le | Description |
 |-------|------|-------------|
 | `/` | Public | Accueil |
 | `/join` | Joueur | Inscription / statut inscriptions |
-| `/room/[playerId]` | Joueur | Salle privée : flux, indices, enveloppes, rôle/mission |
+| `/room/[playerId]` | Joueur | Salle privÃ©e : flux, indices, enveloppes, rÃ´le/mission |
 | `/mj/login` | MJ | Authentifie le MJ (cookie HttpOnly) |
-| `/mj/dashboard` | MJ | Contrôles, canon (spoiler), joueurs, journal |
+| `/mj/dashboard` | MJ | ContrÃ´les, canon (spoiler), joueurs, journal |
 
 ---
 
-## ?? WebSocket – événements
+## ?? WebSocket â€“ Ã©vÃ©nements
 
-| Événement | Payload JSON | Émetteur ? Récepteur | Quand ? |
+| Ã‰vÃ©nement | Payload JSON | Ã‰metteur ? RÃ©cepteur | Quand ? |
 |-----------|--------------|----------------------|---------|
 | `ws:open / ws:close / ws:error` | `null` | Socket interne | Lifecycle client |
-| `identified` | `{ player_id }` | Serveur ? Joueur | Après `identify` |
-| `event` | `{ kind, ... }` | Serveur ? Tous | Broadcast générique |
+| `identified` | `{ player_id }` | Serveur ? Joueur | AprÃ¨s `identify` |
+| `event` | `{ kind, ... }` | Serveur ? Tous | Broadcast gÃ©nÃ©rique |
 | `event:phase_change` | `{ kind:"phase_change", phase }` | Serveur ? Tous | Changement de phase |
-| `event:envelopes_update` | `{ kind:"envelopes_update", player_id?, envelopes? }` | Serveur ? Joueur ciblé / broadcast | Enveloppes redistribuées |
-| `clue` | `{ text, kind }` | Serveur ? Joueur ciblé | Indice privé |
-| `role_reveal` | `{ role }` | Serveur ? Joueur ciblé | Attribution rôle |
-| `secret_mission` | `{ title, text }` | Serveur ? Joueur ciblé | Mission secrète |
+| `event:envelopes_update` | `{ kind:"envelopes_update", player_id?, envelopes? }` | Serveur ? Joueur ciblÃ© / broadcast | Enveloppes redistribuÃ©es |
+| `clue` | `{ text, kind }` | Serveur ? Joueur ciblÃ© | Indice privÃ© |
+| `role_reveal` | `{ role }` | Serveur ? Joueur ciblÃ© | Attribution rÃ´le |
+| `secret_mission` | `{ title, text }` | Serveur ? Joueur ciblÃ© | Mission secrÃ¨te |
 
-*(Plus de détails : voir `/docs/EVENTS.md`.)*
+*(Plus de dÃ©tails : voir `/docs/EVENTS.md`.)*
 
 ---
 
 ## ?? How it works
 
-### Machine à états (backend – as-is)
+### Machine Ã  Ã©tats (backend â€“ as-is)
 
 ```mermaid
 stateDiagram-v2
@@ -74,7 +74,7 @@ stateDiagram-v2
   ACCUSATION_OPEN --> ENDED: POST /party/end
 ```
 
-### Séquence de partie
+### SÃ©quence de partie
 
 ```mermaid
 sequenceDiagram
@@ -99,23 +99,23 @@ sequenceDiagram
 
 ## ? Bonnes pratiques front
 
-1. **Spoilers** : afficher canon / rôle / mission uniquement via toggles locaux (pas de fuite backend).
+1. **Spoilers** : afficher canon / rÃ´le / mission uniquement via toggles locaux (pas de fuite backend).
 2. **localStorage** : conserver `mp_role`, `mp_mission`, `player_id` uniquement. Nettoyer au logout.
-3. **Temps réel** : passer par `lib/socket.ts`; resynchroniser après reconnect via `api.getGameState`.
-4. **Sécurité MJ** : cookie HttpOnly (`/auth/mj/login`). Aucun secret dans le bundle.
-5. **Tests manuels** : suivre `docs/tests-lotB.md` (canon ? enveloppes ? rôles ? mission). Vérifier événements `ws_role_reveal_sent` / `ws_mission_sent`.
+3. **Temps rÃ©el** : passer par `lib/socket.ts`; resynchroniser aprÃ¨s reconnect via `api.getGameState`.
+4. **SÃ©curitÃ© MJ** : cookie HttpOnly (`/auth/mj/login`). Aucun secret dans le bundle.
+5. **Tests manuels** : suivre `docs/tests-lotB.md` (canon ? enveloppes ? rÃ´les ? mission). VÃ©rifier Ã©vÃ©nements `ws_role_reveal_sent` / `ws_mission_sent`.
 
 ---
 
 ## ?? Dossiers
 
-- `app/` – pages Next.js (CSR actuellement)
-- `components/` – UI (MJ/Joueur)
-- `lib/api.ts` – client REST
-- `lib/socket.ts` – wrapper WebSocket
-- `lib/store.ts` – Zustand
-- `styles/` – Tailwind
-- `.env.example` – gabarit env
+- `app/` â€“ pages Next.js (CSR actuellement)
+- `components/` â€“ UI (MJ/Joueur)
+- `lib/api.ts` â€“ client REST
+- `lib/socket.ts` â€“ wrapper WebSocket
+- `lib/store.ts` â€“ Zustand
+- `styles/` â€“ Tailwind
+- `.env.example` â€“ gabarit env
 
 ---
 
@@ -126,10 +126,12 @@ Workflow GitHub Actions (`.github/workflows/ci-frontend.yml`) :
 2. `npm test --if-present`
 3. `npm run build --if-present`
 
-?? Ajouter `npm run lint` une fois ESLint configuré (`next lint`).
+?? Ajouter `npm run lint` une fois ESLint configurÃ© (`next lint`).
 
 ---
 
 ## ?? Roadmap & TODO
 
-Kanban détaillé dans `/docs/TODO_FRONTEND.md` (Done / En cours / Next / Backlog).
+Kanban dÃ©taillÃ© dans `/docs/TODO_FRONTEND.md` (Done / En cours / Next / Backlog).
+
+

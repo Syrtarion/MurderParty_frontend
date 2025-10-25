@@ -119,7 +119,7 @@ export default function PlayerRoom() {
 
     load({ logSnapshot: true });
 
-    connect(pid);
+    void connect(pid);
 
     const offEvent = on("event", (payload: any) => {
       if (!alive) return;
@@ -194,6 +194,11 @@ export default function PlayerRoom() {
       }
     });
 
+    const offReconnect = on("ws:reconnect", () => {
+      if (!alive) return;
+      load({ logSnapshot: false });
+    });
+
     const poll = setInterval(() => {
       if (!isConnected()) load({ logSnapshot: false });
     }, 15_000);
@@ -207,6 +212,7 @@ export default function PlayerRoom() {
       offIdentified();
       offRole();
       offMission();
+      offReconnect();
       clearInterval(poll);
     };
   }, [pid, pushEvent, addIndice]);
