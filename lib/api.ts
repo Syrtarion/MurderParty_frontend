@@ -48,16 +48,34 @@ export type PartyStatus = {
 export type GameState = {
   phase_label: string;
   join_locked: boolean;
-  players: { player_id: string; name: string; character_id?: string | null }[];
+  players: {
+    player_id: string;
+    name: string;
+    character_id?: string | null;
+    character_name?: string | null;
+  }[];
   me?: {
     player_id: string;
     name: string;
     character_id?: string | null;
+    character_name?: string | null;
     envelopes: { num: number; id: string }[];
+    role?: string | null;
+    mission?: Mission | null;
   };
 };
 
-export type AuthOut = { player_id: string; name: string; character_id?: string | null };
+export type Mission = {
+  title?: string;
+  text?: string;
+};
+
+export type AuthOut = {
+  player_id: string;
+  name: string;
+  character_id?: string | null;
+  character_name?: string | null;
+};
 
 // ---------- API public (joueurs) ----------
 
@@ -68,6 +86,9 @@ export const api = {
       : `${BASE}/game/state`;
     return fetch(url, { cache: "no-store" }).then(parse);
   },
+
+  getCanon: (): Promise<any> =>
+    fetch(`${BASE}/game/canon`, { credentials: "include" }).then(parse),
 
   register: (name: string, password: string): Promise<AuthOut> =>
     fetch(`${BASE}/auth/register`, {
@@ -115,4 +136,10 @@ export const api = {
 
   envelopesSummary: (): Promise<any> =>
     fetch(`${BASE}/master/envelopes/summary`, { credentials: "include" }).then(parse),
+
+  postEnvelopesHidden: (): Promise<any> =>
+    fetch(`${BASE}/party/envelopes_hidden`, { method: "POST", credentials: "include" }).then(parse),
+
+  postRolesAssign: (): Promise<any> =>
+    fetch(`${BASE}/party/roles_assign`, { method: "POST", credentials: "include" }).then(parse),
 };

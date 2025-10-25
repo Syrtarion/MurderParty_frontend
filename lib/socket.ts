@@ -53,6 +53,7 @@ function setupSocket() {
     connected = false;
     emit("ws:close", null);
     ws = null;
+    openPromise = null;
     // retry auto
     setTimeout(() => setupSocket(), 1500);
   };
