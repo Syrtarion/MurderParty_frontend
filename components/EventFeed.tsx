@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useMemo } from "react";
 import { useGameEvents } from "@/lib/store";
@@ -37,12 +37,12 @@ export default function EventFeed() {
   const ordered = useMemo(() => [...events].reverse(), [events]);
 
   if (ordered.length === 0) {
-    return <div className="text-sm text-muted">Aucun événement pour l'instant.</div>;
+    return <div className="text-sm text-muted">Aucun événement pour l’instant.</div>;
   }
 
   return (
     <div>
-      <ul className="space-y-2" aria-live="polite" aria-label="Flux d'événements récents">
+      <ul className="space-y-2" aria-live="polite" aria-label="Flux d’événements récents">
         {ordered.map((event) => (
           <li
             key={event.id}

@@ -49,6 +49,23 @@
 import type { Mission } from "@/lib/types";
 export type { Mission } from "@/lib/types";
 
+export type RawGameEvent = {
+  id: string;
+  type: string;
+  payload: any;
+  ts: number | null;
+  scope?: string | null;
+  channel?: string | null;
+  targets?: string[];
+};
+
+export type GameEventsResponse = {
+  ok: boolean;
+  count: number;
+  events: RawGameEvent[];
+  latest_ts?: number | null;
+};
+
 function resolveApiBase(): string {
   const raw = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
   try {
@@ -272,6 +289,63 @@ export const api = {
   },
 
 
+
+
+
+
+
+
+  getGameEvents: (opts: {
+    playerId?: string;
+    sinceTs?: number | null;
+    limit?: number;
+    audience?: "player" | "admin";
+  } = {}): Promise<GameEventsResponse> => {
+
+
+    const params = new URLSearchParams();
+
+
+    if (opts.playerId) params.set("player_id", opts.playerId);
+
+
+    if (typeof opts.sinceTs === "number") {
+
+
+      params.set("since_ts", String(opts.sinceTs));
+
+
+    }
+
+
+    if (typeof opts.limit === "number") {
+
+
+      params.set("limit", String(opts.limit));
+
+
+    }
+
+
+    if (opts.audience && opts.audience !== "player") {
+
+
+      params.set("audience", opts.audience);
+
+
+    }
+
+
+    const qs = params.toString();
+
+
+    const url = qs ? `${API_BASE}/game/events?${qs}` : `${API_BASE}/game/events`;
+
+
+    return fetch(url, { credentials: "include" }).then(parse);
+
+
+  },
 
 
 

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useMemo } from "react";
 import { useGameClues } from "@/lib/store";
@@ -42,17 +42,13 @@ export default function PlayerClues() {
               key={clue.id}
               className="space-y-2 rounded-xl border border-subtle bg-surface p-3 text-sm"
             >
-              <div
-                className={`badge ${badge.cls}`}
-              >
-                {badge.label}
-              </div>
+              <div className={`badge ${badge.cls}`}>{badge.label}</div>
               <p className="mt-2 text-sm leading-relaxed">{clue.text}</p>
             </li>
           );
         })}
         {ordered.length === 0 && (
-          <li className="text-sm text-muted">Aucun indice pour l'instant.</li>
+          <li className="text-sm text-muted">Aucun indice pour l’instant.</li>
         )}
       </ul>
     </div>

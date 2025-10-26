@@ -12,6 +12,7 @@ interface GameActions {
   setPlayer: (player?: PlayerState) => void;
   addClue: (clue: PlayerClue) => void;
   pushEvent: (event: GameEvent) => void;
+  setEvents: (events: GameEvent[]) => void;
   reset: () => void;
 }
 
@@ -29,6 +30,10 @@ export const useGameStore = create<GameStore>((set) => ({
   addClue: (clue) =>
     set((state) => ({
       clues: [...state.clues, clue],
+    })),
+  setEvents: (events) =>
+    set(() => ({
+      events: [...events],
     })),
   pushEvent: (event) =>
     set((state) => ({
@@ -52,10 +57,11 @@ export const useGameEvents = () => useGameStore(selectEvents);
 
 export const useGameActions = () =>
   useGameStore(
-    useShallow(({ setPlayer, addClue, pushEvent, reset }) => ({
+    useShallow(({ setPlayer, addClue, pushEvent, setEvents, reset }) => ({
       setPlayer,
       addClue,
       pushEvent,
+      setEvents,
       reset,
     }))
   );

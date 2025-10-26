@@ -1,21 +1,24 @@
-# Flux de jeu – As-is & To-be
+ï»¿# Flux de jeu â€“ As-is & To-be
 
 ## As-is
 ### Joueur
 1. `/join` (statut) ? `POST /auth/register`.
-2. `/room/[playerId]` : `GET /game/state`, WS `identify`, écoute `event:*`, `clue`, `role_reveal`, `secret_mission`, fallback poll 15 s.
-3. Rôle/mission ? `localStorage`.
+2. `/room/[playerId]` :
+   - `GET /game/events?player_id=...` (historique partagÃ©, max 200 entrÃ©es).
+   - `GET /game/state` (snapshot).
+   - WS `identify`, Ã©coute `event:*`, `clue`, `role_reveal`, `secret_mission`, resync REST Ã  la reconnexion, fallback poll 15 s.
+3. RÃ´le/mission : `localStorage` + toggles anti-spoiler.
 
 ### MJ
 1. `/mj/login` (cookie).
 2. `/mj/dashboard` : actions `start`, `lock_join`, `envelopes_hidden`, `roles_assign`.
-3. Canon spoiler toggle, joueurs (enveloppes + rôle toggle), journal. WS broadcast.
+3. Canon spoiler toggle, joueurs (enveloppes + rÃ´le toggle), journal. WS broadcast.
 
 ### Phases globales
 - WAITING_START ? WAITING_PLAYERS ? ENVELOPES_DISTRIBUTION ? ENVELOPES_HIDDEN ? ROLES_ASSIGNED ? SESSION_ACTIVE ? ACCUSATION_OPEN ? ENDED.
 - `roles_assign` : canon + missions, logs `ws_role_reveal_sent`, `ws_mission_sent`.
 
-#### Diagramme état (as-is)
+#### Diagramme Ã©tat (as-is)
 ```mermaid
 stateDiagram-v2
   [*] --> WAITING_START
@@ -31,18 +34,18 @@ stateDiagram-v2
 ---
 
 ## To-be
-### Améliorations
-- Générer le canon dès ENVELOPES_DISTRIBUTION (préload).
+### AmÃ©liorations
+- GÃ©nÃ©rer le canon dÃ¨s ENVELOPES_DISTRIBUTION (prÃ©load).
 - `/party/session_start` :
   - Intro LLM (WS `narration`).
   - `SESSION.start_next_round()` (minijeu, prompts).
   - Timer (`start_timer` ? `narration half_time`, `timer_end`).
-- Résilience WS : backoff exponentiel, buffer + resync REST.
-- Accessibilité : focus, ARIA, avatars `aria-hidden`.
-- Sécurité : cookie MJ, pas de secrets dans bundle, logs filtrés.
-- UX : toggles spoiler pour rôle/mission, skeleton.
+- RÃ©silience WS : backoff exponentiel, buffer + resync REST.
+- AccessibilitÃ© : focus, ARIA, avatars `aria-hidden`.
+- SÃ©curitÃ© : cookie MJ, pas de secrets dans bundle, logs filtrÃ©s.
+- UX : toggles spoiler pour rÃ´le/mission, skeleton.
 
-#### Diagramme séquence (to-be)
+#### Diagramme sÃ©quence (to-be)
 ```mermaid
 sequenceDiagram
   participant MJ
@@ -57,15 +60,16 @@ sequenceDiagram
 
   MJ->>Backend: /master/lock_join
   Backend-->>WS: event:envelopes_update
-  Front->>Backend: GET /game/state (resync)
+  Front->>Backend: GET /game/events + GET /game/state (resync)
 
-  note over Backend: Prépare canon (LLM) dès ENVELOPES_DISTRIBUTION
+  note over Backend: PrÃ©pare canon (LLM) dÃ¨s ENVELOPES_DISTRIBUTION
 
   MJ->>Backend: /party/envelopes_hidden
   WS-->>Front: event:phase_change
 
   MJ->>Backend: /party/roles_assign
   WS-->>Front: role_reveal + secret_mission
+  WS-->>Front: event:phase_change + historique consignÃ©s
 
   Front->>Front: stocke mp_role/mp_mission (toggle "Afficher")
 
@@ -78,3 +82,4 @@ sequenceDiagram
     Front->>Backend: GET /game/state (poll)
   end
 ```
+

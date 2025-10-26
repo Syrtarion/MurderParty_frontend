@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 
 
@@ -6,7 +6,7 @@
 
 
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 
 
@@ -19,6 +19,7 @@ import StatusBar from "@/components/StatusBar";
 
 
 import { api, Mission } from "@/lib/api";
+import type { GameEvent } from "@/lib/types";
 
 
 
@@ -66,7 +67,7 @@ import EventFeed from "@/components/EventFeed";
 
 
 
- * - Snapshot loggé une seule fois (pas lors des refresh bouton/WS/poll).
+ * - Snapshot journalisé une seule fois (pas lors des refresh bouton/WS/poll).
 
 
 
@@ -98,7 +99,7 @@ export default function PlayerRoom() {
 
 
 
-  const { pushEvent, addClue } = useGameActions();
+  const { pushEvent, addClue, setEvents, reset } = useGameActions();
 
 
 
@@ -179,193 +180,163 @@ export default function PlayerRoom() {
 
 
   const loggedSnapshotOnce = useRef(false);
-
-
-
-
-
-
-
-  async function load({ logSnapshot }: { logSnapshot: boolean }) {
-
-
-
-    if (!pid) return;
-
-
-
-    try {
-
-
-
-      setErrorMsg(null);
-
-
-
-      setLoading(true);
-
-
-
-      const s = await api.getGameState(pid);
-
-
-
-      setPhase(String(s.phase_label ?? "JOIN"));
-
-
-
-      setLocked(Boolean(s.join_locked));
-
-
-
-
-
-
-
-      if (!s.me) throw new Error("Joueur introuvable (me). Vérifie l'identifiant.");
-
-
-
-      const nextMe = {
-
-
-
-        player_id: s.me.player_id,
-
-
-
-        name: s.me.name || "",
-
-
-
-        character_id: s.me.character_id ?? null,
-
-
-
-        character_name: s.me.character_name ?? null,
-
-
-
-        envelopes: Array.isArray(s.me.envelopes) ? s.me.envelopes : [],
-
-
-
-      };
-
-
-
-      setMe(nextMe);
-
-
-
-      if (s.me.role) {
-
-
-
-        setRole(String(s.me.role));
-
-
-
-        setShowRole(false);
-
-
-
-        localStorage.setItem("mp_role", String(s.me.role));
-
-
-
-      }
-
-
-
-      if (s.me.mission && typeof s.me.mission === "object") {
-
-
-
-        setMission(s.me.mission as Mission);
-
-
-
-        setShowMission(false);
-
-
-
-        localStorage.setItem("mp_mission", JSON.stringify(s.me.mission));
-
-
-
-      }
-
-
-
-
-
-
-
-      if (logSnapshot && !loggedSnapshotOnce.current) {
-
-
-
-        pushEvent({
-
-
-
-          id: crypto.randomUUID(),
-
-
-
-          type: "state_snapshot",
-
-
-
-          payload: { phase: s.phase_label, join_locked: s.join_locked, me: nextMe },
-
-
-
-          ts: Date.now(),
-
-
-
+  const seenEvents = useRef<Set<string>>(new Set());
+  const lastEventsTsRef = useRef<number | null>(null);
+  const EVENT_HISTORY_LIMIT = 200;
+
+  const replaceEvents = useCallback(
+    (events: GameEvent[]) => {
+      setEvents(events);
+      seenEvents.current = new Set(events.map((event) => event.id));
+    },
+    [setEvents]
+  );
+
+  const recordEvent = useCallback(
+    (event: GameEvent) => {
+      if (!event?.id) return;
+      if (seenEvents.current.has(event.id)) return;
+      seenEvents.current.add(event.id);
+      pushEvent(event);
+    },
+    [pushEvent]
+  );
+
+  const syncEvents = useCallback(
+    async (resetHistory: boolean) => {
+      if (!pid) return;
+      try {
+        const since =
+          !resetHistory && lastEventsTsRef.current != null
+            ? lastEventsTsRef.current
+            : undefined;
+        const res = await api.getGameEvents({
+          playerId: pid,
+          sinceTs: since,
+          limit: EVENT_HISTORY_LIMIT,
         });
 
+        let latestTs =
+          res && typeof res.latest_ts === "number" ? res.latest_ts : undefined;
+
+        if (res?.events?.length) {
+          const normalized: GameEvent[] = res.events.map((evt) => ({
+            id: evt.id,
+            type: evt.type ?? "event",
+            payload: evt.payload ?? {},
+            ts:
+              typeof evt.ts === "number"
+                ? Math.floor(evt.ts * 1000)
+                : Date.now(),
+          }));
+
+          replaceEvents(normalized);
+
+          if (latestTs === undefined) {
+            const last = res.events[res.events.length - 1];
+            if (last && typeof last.ts === "number") {
+              latestTs = last.ts;
+            }
+          }
+        } else if (resetHistory) {
+          replaceEvents([]);
+          seenEvents.current.clear();
+        }
+
+        if (typeof latestTs === "number") {
+          lastEventsTsRef.current = latestTs;
+        } else if (resetHistory) {
+          lastEventsTsRef.current = since ?? null;
+        }
+      } catch (error) {
+        console.error("Failed to sync events", error);
+      }
+    },
+    [pid, replaceEvents]
+  );
+
+  useEffect(() => {
+    reset();
+    seenEvents.current.clear();
+    lastEventsTsRef.current = null;
+    loggedSnapshotOnce.current = false;
+  }, [pid, reset]);
+
+  useEffect(() => {
+    return () => {
+      reset();
+      seenEvents.current.clear();
+      lastEventsTsRef.current = null;
+    };
+  }, [reset]);
 
 
-        loggedSnapshotOnce.current = true;
 
 
 
+
+
+  const load = useCallback(
+    async ({ logSnapshot }: { logSnapshot: boolean }) => {
+      if (!pid) {
+        return;
       }
 
+      try {
+        setErrorMsg(null);
+        setLoading(true);
 
+        const resetHistory = logSnapshot || lastEventsTsRef.current === null;
+        await syncEvents(resetHistory);
 
-    } catch (e: any) {
+        const state = await api.getGameState(pid);
 
+        setPhase(String(state.phase_label ?? "JOIN"));
+        setLocked(Boolean(state.join_locked));
 
+        if (!state.me) {
+          throw new Error("Joueur introuvable (me). Vérifie l’identifiant.");
+        }
 
-      setErrorMsg(e?.message ?? "Impossible de charger la page joueur.");
+        const nextMe = {
+          player_id: state.me.player_id,
+          name: state.me.name || "",
+          character_id: state.me.character_id ?? null,
+          character_name: state.me.character_name ?? null,
+          envelopes: Array.isArray(state.me.envelopes) ? state.me.envelopes : [],
+        };
 
+        setMe(nextMe);
 
+        if (state.me.role) {
+          setRole(String(state.me.role));
+          setShowRole(false);
+          localStorage.setItem("mp_role", String(state.me.role));
+        }
 
-    } finally {
+        if (state.me.mission && typeof state.me.mission === "object") {
+          setMission(state.me.mission as Mission);
+          setShowMission(false);
+          localStorage.setItem("mp_mission", JSON.stringify(state.me.mission));
+        }
 
-
-
-      setLoading(false);
-
-
-
-    }
-
-
-
-  }
-
-
-
-
-
-
-
+        if (logSnapshot && !loggedSnapshotOnce.current) {
+          recordEvent({
+            id: crypto.randomUUID(),
+            type: "state_snapshot",
+            payload: { phase: state.phase_label, join_locked: state.join_locked, me: nextMe },
+            ts: Date.now(),
+          });
+          loggedSnapshotOnce.current = true;
+        }
+      } catch (error: any) {
+        setErrorMsg(error?.message ?? "Impossible de charger la page joueur.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [pid, syncEvents, recordEvent]
+  );
   useEffect(() => {
 
 
@@ -502,7 +473,7 @@ export default function PlayerRoom() {
 
 
 
-      pushEvent({ id: crypto.randomUUID(), type: t, payload, ts: Date.now() });
+      recordEvent({ id: crypto.randomUUID(), type: t, payload, ts: Date.now() });
 
 
 
@@ -674,7 +645,11 @@ export default function PlayerRoom() {
 
 
 
-      pushEvent({ id: crypto.randomUUID(), type: "clue", payload, ts: Date.now() });
+      recordEvent({ id: crypto.randomUUID(), type: "clue", payload, ts: Date.now() });
+
+
+
+      void syncEvents(false);
 
 
 
@@ -694,7 +669,7 @@ export default function PlayerRoom() {
 
 
 
-      pushEvent({ id: crypto.randomUUID(), type: "identified", payload: { playerId: pid }, ts: Date.now() });
+      recordEvent({ id: crypto.randomUUID(), type: "identified", payload: { playerId: pid }, ts: Date.now() });
 
 
 
@@ -734,6 +709,14 @@ export default function PlayerRoom() {
 
 
 
+        recordEvent({ id: crypto.randomUUID(), type: "role_reveal", payload, ts: Date.now() });
+
+
+
+        void syncEvents(false);
+
+
+
       }
 
 
@@ -767,6 +750,14 @@ export default function PlayerRoom() {
 
 
         localStorage.setItem("mp_mission", JSON.stringify(payload));
+
+
+
+        recordEvent({ id: crypto.randomUUID(), type: "secret_mission", payload, ts: Date.now() });
+
+
+
+        void syncEvents(false);
 
 
 
@@ -866,7 +857,7 @@ export default function PlayerRoom() {
 
 
 
-  }, [pid, pushEvent, addClue]);
+  }, [pid, load, recordEvent, addClue, syncEvents]);
 
 
 
@@ -938,7 +929,7 @@ export default function PlayerRoom() {
 
 
 
-            <h2 className="text-lg font-medium">Flux d'événements</h2>
+            <h2 className="text-lg font-medium">Flux d’événements</h2>
 
 
 
@@ -1158,15 +1149,15 @@ export default function PlayerRoom() {
 
               {!role ? (
 
-                <p>Tu recevras ton rôle dès que le MJ l'aura révélé.</p>
+                <p>Tu recevras ton rôle dÃ¨s que le MJ l’aura révélé.</p>
 
               ) : showRole ? (
 
-                <p className="text-neutral-100">Garde ton rôle secret et utilise-le pour orienter l'enquête.</p>
+                <p className="text-neutral-100">Garde ton rôle secret et utilise-le pour orienter l’enquête.</p>
 
               ) : (
 
-                <p>Appuie sur "Afficher" uniquement lorsque tu es prêt à consulter ton rôle.</p>
+                <p>Appuie sur « Afficher » uniquement lorsque tu es prêt à consulter ton rôle.</p>
 
               )}
 
@@ -1210,7 +1201,7 @@ export default function PlayerRoom() {
 
               {!mission ? (
 
-                <p>En attente de ta mission secrète. Reste à l'écoute !</p>
+                <p>En attente de ta mission secrète. Reste à l’écoute !</p>
 
               ) : showMission ? (
 
@@ -1224,7 +1215,7 @@ export default function PlayerRoom() {
 
               ) : (
 
-                <p>Appuie sur "Afficher" pour lire ta mission secrète en toute discrétion.</p>
+                <p>Appuie sur « Afficher » pour lire ta mission secrète en toute discrÃ©tion.</p>
 
               )}
 
@@ -1291,6 +1282,11 @@ export default function PlayerRoom() {
 
 
 }
+
+
+
+
+
 
 
 

@@ -1,53 +1,46 @@
-# Audit Frontend ñ MurderParty (Next.js 14)
+Ôªø# Audit Frontend ‚Äì MurderParty (Next.js 14)
 
-## Structure & QualitÈ
-- Arborescence : `app/`, `components/`, `lib/`, `styles/`. Pas de sÈparation "page components".
-- TypeScript : en place mais `lib/store.ts` peu typÈ (`any` frÈquent).
-- ESLint/Prettier : non configurÈs (`next lint` lance le wizard). CI ne les exÈcute pas.
-- Scripts : `dev`, `build`, `start`. Pas de `lint`, `test`.
-- CI : `.github/workflows/ci-frontend.yml` (Node 20, `npm ci`, `npm test --if-present`, `npm run build --if-present`). Pas de lint/audit.
+## Structure & Qualit√©
+- Arborescence : `app/`, `components/`, `lib/`, `styles/`. Pas de s√©paration "page components".
+- TypeScript : structur√© (types partag√©s) mais `GameEvent.payload` reste permissif (`any` remont√© du backend).
+- ESLint : configuration `next/core-web-vitals` pos√©e. `npm run lint` tourne mais √©choue (r√®gles `react/no-unescaped-entities`, `react-hooks/exhaustive-deps`). Prettier toujours absent.
+- Scripts : `dev`, `build`, `start`, `lint`, `test`, `test:e2e`. CI n'ex√©cute pas encore `lint`.
+- CI : `.github/workflows/ci-frontend.yml` (Node 20, `npm ci`, `npm test --if-present`, `npm run build --if-present`). Ajouter lint/audit.
 
-## RÈseau & Temps rÈel
-- `lib/api.ts` : wrapper fetch sans timeout/AbortController/rÈessais.
-- `lib/socket.ts` :
-  - Reconnexion simple (1.5 s) sans backoff.
-  - `openPromise` non reset ? reconnect fragile.
-  - Pas de buffer ni resync aprËs reconnexion (perte díÈvÈnements possible).
-  - Actions (identify) non rÈÈmises ‡ la reconnexion.
-- `/room/[playerId]` combine `GET /game/state` + WS + poll fallback (OK).
-- SÈcuritÈ MJ : redirection `/mj/login` si `/party/status` Èchoue (OK).
+## R√©seau & Temps r√©el
+- `lib/api.ts` : r√©solution dynamique des URLs, endpoint `getGameEvents`. Toujours pas de timeout/AbortController/r√©essais.
+- `lib/socket.ts` : backoff exponentiel, buffer d'envois, resync post-reconnect, r√©-identification automatique.
+- `/room/[playerId]` : snapshot initial + resync REST (√©v√®nements historiques) + WS + fallback poll. Pr√©serve l'historique commun distants/local.
+- S√©curit√© MJ : redirection `/mj/login` si `/party/status` √©choue (OK).
 
 ## Stores
-- `lib/store.ts` (Zustand) unique :
-  - `player`, `clues`, `events`. Pas de sÈlecteurs.
-  - Logs non limitÈs.
-  - Typage faible (`payload: any`).
-- Tout en CSR (pas de SSR).
+- `lib/store.ts` (Zustand) : `player`, `clues`, `events`, `setEvents`, s√©lecteurs d√©riv√©s. D√©duplication par `seenEvents`. Limitation de taille √† pr√©voir (front).
+- Toujours full CSR (pas de SSR/RSC).
 
 ## Performance
 - Pas de server components (tout `use client`).
 - Pas de streaming/lazy pour sections lourdes.
-- `.next/` commitÈe ? ajouter ‡ `.gitignore`.
+- `.next/` commit√©e ? ajouter √† `.gitignore`.
 - Pas de memoisation sur listes (volume faible).
 - Bundles globaux (pas de split par route).
 
-## SÈcuritÈ / ConfidentialitÈ
+## S√©curit√© / Confidentialit√©
 - `.env.example` public (pas de secret backend).
-- Dashboard MJ : canon masquÈ par toggle, OK.
-- Joueur : rÙle/mission = `localStorage`. UI doit prÈvoir toggle anti-spoiler.
-- Journal `MasterControls` affiche JSON des rÈponses (risque leak si partage public).
+- Dashboard MJ : canon masqu√© par toggle, OK.
+- Joueur : r√¥le/mission = `localStorage` + toggles anti-spoiler.
+- Journal MJ expose encore des payloads bruts (risque leak si √©cran partag√©).
 
-## Plan díaction
+## Plan d‚Äôaction
 | Priority | Action | Effort | Risques |
 |----------|--------|--------|---------|
-| **P0** | Corriger `_resolve_generate_endpoint` + lever `LLMServiceError` (backend) | S | Bloquant assignation |
-| **P0** | Exposer `role`/`mission` dans `GET /game/state` + toggles UI | M | Joueurs sans info |
-| **P1** | RÈsilience WS (backoff, buffer, resync) | M | ComplexitÈ reconnection |
-| **P1** | Ajouter ESLint/Tailwind lint + script CI | S | Faible |
-| **P1** | Refactor store (sÈlecteurs, typage, limites) | M | Migration |
-| **P1** | Typage central (lib/types.ts) | S | Alignement back |
-| **P2** | AccessibilitÈ (focus, ARIA, avatars) | M | Faible |
+| **P0** | Corriger les violations `react/no-unescaped-entities` & deps manquantes (lint bloquant) | M | Bloque CI lint |
+| **P0** | Valider resync multi-clients (local + IP publique) & documenter proc√©dure | M | Risque divergence d'√©tat |
+| **P1** | Ajouter lint (et √©ventuel formatting) √† la CI | S | Faible |
+| **P1** | Borne/filtre le store d'√©v√®nements c√¥t√© front (√©viter d√©rive) | S | Moyen terme |
+| **P1** | Ajouter timeout/AbortController + retries dans `lib/api.ts` | M | Gestion erreurs r√©seau |
+| **P2** | Accessibilit√© (focus visibles, ARIA, contrastes) | M | Faible |
 | **P2** | Theming Tailwind | L | Impact design |
-| **P2** | Tests e2e (Playwright) | L | Setup lourd |
+| **P2** | Tests e2e multi-joueurs Playwright | L | Setup lourd |
 
-Quick wins : `.gitignore` ? `.next/`, script `npm run lint`, reset `openPromise`, typage store.
+Quick wins : int√©grer `npm run lint` en CI, corriger les cha√Ænes non √©chapp√©es, typage affin√© `GameEvent.payload`, s'assurer `.next/` ignor√©.
+
