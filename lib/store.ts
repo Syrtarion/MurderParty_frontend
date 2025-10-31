@@ -11,6 +11,11 @@ interface GameSlice {
 interface GameActions {
   setPlayer: (player?: PlayerState) => void;
   addClue: (clue: PlayerClue) => void;
+  setClues: (clues: PlayerClue[]) => void;
+  markClueDestroyed: (
+    hintId: string,
+    meta?: { destroyedAt?: number; destroyedBy?: string | null }
+  ) => void;
   pushEvent: (event: GameEvent) => void;
   setEvents: (events: GameEvent[]) => void;
   reset: () => void;
@@ -29,7 +34,33 @@ export const useGameStore = create<GameStore>((set) => ({
   setPlayer: (player) => set({ player }),
   addClue: (clue) =>
     set((state) => ({
-      clues: [...state.clues, clue],
+      clues: (() => {
+        const next = [...state.clues];
+        const idx = next.findIndex((c) => c.id === clue.id);
+        if (idx >= 0) {
+          next[idx] = { ...next[idx], ...clue };
+          return next;
+        }
+        next.push(clue);
+        return next;
+      })(),
+    })),
+  setClues: (clues) =>
+    set(() => ({
+      clues: [...clues],
+    })),
+  markClueDestroyed: (hintId, meta) =>
+    set((state) => ({
+      clues: state.clues.map((clue) =>
+        clue.id === hintId
+          ? {
+              ...clue,
+              destroyed: true,
+              destroyedAt: meta?.destroyedAt ?? clue.destroyedAt ?? Date.now(),
+              destroyedBy: meta?.destroyedBy ?? clue.destroyedBy ?? null,
+            }
+          : clue
+      ),
     })),
   setEvents: (events) =>
     set(() => ({
@@ -57,11 +88,23 @@ export const useGameEvents = () => useGameStore(selectEvents);
 
 export const useGameActions = () =>
   useGameStore(
-    useShallow(({ setPlayer, addClue, pushEvent, setEvents, reset }) => ({
-      setPlayer,
-      addClue,
-      pushEvent,
-      setEvents,
-      reset,
-    }))
+    useShallow(
+      ({
+        setPlayer,
+        addClue,
+        setClues,
+        markClueDestroyed,
+        pushEvent,
+        setEvents,
+        reset,
+      }) => ({
+        setPlayer,
+        addClue,
+        setClues,
+        markClueDestroyed,
+        pushEvent,
+        setEvents,
+        reset,
+      })
+    )
   );

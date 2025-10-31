@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from "react";
-import { useGameClues } from "@/lib/store";
+import { useGameClues, useGamePlayer } from "@/lib/store";
 import type { PlayerClue } from "@/lib/types";
 
 const BADGE_STYLE: Record<string, { label: string; cls: string }> = {
@@ -28,6 +28,7 @@ function getBadge(clue: PlayerClue) {
 }
 
 export default function PlayerClues() {
+  const player = useGamePlayer();
   const clues = useGameClues();
   const ordered = useMemo(() => [...clues].reverse(), [clues]);
 
@@ -37,13 +38,46 @@ export default function PlayerClues() {
       <ul className="space-y-2">
         {ordered.map((clue) => {
           const badge = getBadge(clue);
+          const isDiscoverer =
+            clue.discovererId && clue.discovererId === player?.playerId;
           return (
             <li
               key={clue.id}
               className="space-y-2 rounded-xl border border-subtle bg-surface p-3 text-sm"
             >
               <div className={`badge ${badge.cls}`}>{badge.label}</div>
-              <p className="mt-2 text-sm leading-relaxed">{clue.text}</p>
+              <p
+                className={`mt-2 text-sm leading-relaxed ${
+                  clue.destroyed ? "line-through text-muted" : ""
+                }`}
+              >
+                {clue.text}
+              </p>
+              <div className="text-xs text-muted space-y-0.5">
+                {clue.tier && (
+                  <p>
+                    Niveau&nbsp;:{" "}
+                    <span className="text-neutral-100 font-medium">
+                      {clue.tier}
+                    </span>
+                  </p>
+                )}
+                {clue.shared !== undefined && (
+                  <p>
+                    {clue.shared
+                      ? "Partagé avec la table"
+                      : isDiscoverer
+                      ? "Conservé pour toi"
+                      : "Version restreinte reçue"}
+                  </p>
+                )}
+                {clue.destroyed && (
+                  <p className="text-rose-300">
+                    Indice détruit{" "}
+                    {clue.destroyedBy ? `par ${clue.destroyedBy}` : ""}
+                  </p>
+                )}
+              </div>
             </li>
           );
         })}

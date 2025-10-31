@@ -4,6 +4,13 @@ export interface PlayerClue {
   id: string;
   text: string;
   kind: ClueKind;
+  tier?: string;
+  roundIndex?: number;
+  shared?: boolean;
+  discovererId?: string | null;
+  destroyed?: boolean;
+  destroyedAt?: number | null;
+  destroyedBy?: string | null;
 }
 
 export type Mission = {

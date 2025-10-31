@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 
 
@@ -15,11 +15,12 @@ import { useParams, useRouter } from "next/navigation";
 
 
 import StatusBar from "@/components/StatusBar";
+import { setSessionId as setApiSessionId } from "@/lib/api";
 
 
 
 import { api, Mission } from "@/lib/api";
-import type { GameEvent } from "@/lib/types";
+import type { GameEvent, PlayerClue } from "@/lib/types";
 
 
 
@@ -99,7 +100,9 @@ export default function PlayerRoom() {
 
 
 
-  const { pushEvent, addClue, setEvents, reset } = useGameActions();
+  const { pushEvent, addClue, setClues, markClueDestroyed, setEvents, reset } = useGameActions();
+
+  const listenersReadyRef = useRef(false);
 
 
 
@@ -184,6 +187,35 @@ export default function PlayerRoom() {
   const lastEventsTsRef = useRef<number | null>(null);
   const EVENT_HISTORY_LIMIT = 200;
 
+  const tierToKind = useCallback((tier: string | undefined) => {
+    switch ((tier || "").toLowerCase()) {
+      case "major":
+        return "crucial";
+      case "misleading":
+        return "decoratif";
+      case "minor":
+      case "vague":
+      default:
+        return "ambigu";
+    }
+  }, []);
+
+  const mapHintToClue = useCallback(
+    (hint: any): PlayerClue => ({
+      id: String(hint?.hint_id ?? crypto.randomUUID()),
+      text: String(hint?.text ?? "Indice"),
+      kind: tierToKind(hint?.tier),
+      tier: hint?.tier ?? undefined,
+      roundIndex: hint?.round_index ?? undefined,
+      shared: hint?.shared ?? undefined,
+      discovererId: hint?.discoverer_id ?? null,
+      destroyed: Boolean(hint?.destroyed),
+      destroyedAt: hint?.destroyed_at ?? null,
+      destroyedBy: hint?.destroyed_by ?? null,
+    }),
+    [tierToKind]
+  );
+
   const replaceEvents = useCallback(
     (events: GameEvent[]) => {
       setEvents(events);
@@ -255,6 +287,14 @@ export default function PlayerRoom() {
     [pid, replaceEvents]
   );
 
+ useEffect(() => {
+    if (typeof window === "undefined") return;
+    const storedSession = window.localStorage.getItem("mp_session_id");
+    if (storedSession && storedSession.trim()) {
+      setApiSessionId(storedSession.trim());
+    }
+  }, []);
+
   useEffect(() => {
     reset();
     seenEvents.current.clear();
@@ -264,6 +304,7 @@ export default function PlayerRoom() {
 
   useEffect(() => {
     return () => {
+      listenersReadyRef.current = false;
       reset();
       seenEvents.current.clear();
       lastEventsTsRef.current = null;
@@ -289,13 +330,24 @@ export default function PlayerRoom() {
         const resetHistory = logSnapshot || lastEventsTsRef.current === null;
         await syncEvents(resetHistory);
 
+        if (typeof window !== "undefined") {
+          const storedSession = window.localStorage.getItem("mp_session_id");
+          if (storedSession && storedSession.trim() && storedSession.trim() !== "default") {
+            setApiSessionId(storedSession.trim());
+          }
+        }
+
         const state = await api.getGameState(pid);
+
+        if (state?.session_id) {
+          setApiSessionId(String(state.session_id));
+        }
 
         setPhase(String(state.phase_label ?? "JOIN"));
         setLocked(Boolean(state.join_locked));
 
         if (!state.me) {
-          throw new Error("Joueur introuvable (me). Vérifie l’identifiant.");
+          throw new Error("Joueur introuvable (me). Vérifie lidentifiant.");
         }
 
         const nextMe = {
@@ -320,6 +372,15 @@ export default function PlayerRoom() {
           localStorage.setItem("mp_mission", JSON.stringify(state.me.mission));
         }
 
+        try {
+          const hintsRes = await api.listSessionHints({ playerId: pid });
+          if (Array.isArray(hintsRes?.hints)) {
+            setClues(hintsRes.hints.map(mapHintToClue));
+          }
+        } catch (error) {
+          console.warn("Impossible de récupérer l'historique des indices", error);
+        }
+
         if (logSnapshot && !loggedSnapshotOnce.current) {
           recordEvent({
             id: crypto.randomUUID(),
@@ -330,12 +391,21 @@ export default function PlayerRoom() {
           loggedSnapshotOnce.current = true;
         }
       } catch (error: any) {
-        setErrorMsg(error?.message ?? "Impossible de charger la page joueur.");
+        const message = error?.message ?? "Impossible de charger la page joueur.";
+        setErrorMsg(message);
+        if (message.includes("404")) {
+          if (typeof window !== "undefined") {
+            window.localStorage.removeItem("mp_session_id");
+            window.localStorage.removeItem("mp_role");
+            window.localStorage.removeItem("mp_mission");
+          }
+          router.replace("/join");
+        }
       } finally {
         setLoading(false);
       }
     },
-    [pid, syncEvents, recordEvent]
+    [pid, syncEvents, recordEvent, setClues, mapHintToClue, router]
   );
   useEffect(() => {
 
@@ -431,27 +501,17 @@ export default function PlayerRoom() {
 
   useEffect(() => {
 
-
-
     if (!pid) return;
-
-
-
-    let alive = true;
-
-
-
-
-
-
 
     load({ logSnapshot: true });
 
+    if (listenersReadyRef.current) {
+      return;
+    }
 
+    listenersReadyRef.current = true;
 
-
-
-
+    let alive = true;
 
     void connect(pid);
 
@@ -609,7 +669,7 @@ export default function PlayerRoom() {
 
 
 
-    const offClue = on("clue", (payload: any) => {
+    const offHintDelivered = on("hint_delivered", (payload: any) => {
 
 
 
@@ -617,11 +677,77 @@ export default function PlayerRoom() {
 
 
 
-      const mapKind = (k: string) =>
+      const clue = mapHintToClue(payload);
 
 
 
-        k === "crucial" ? "crucial" : k === "red_herring" ? "decoratif" : "ambigu";
+      addClue(clue);
+
+
+
+      recordEvent({
+
+        id: payload?.hint_id ?? crypto.randomUUID(),
+
+        type: "hint_delivered",
+
+        payload,
+
+        ts: Date.now(),
+
+      });
+
+
+
+    });
+
+
+
+    const offHintDeliveredEvent = on("event:hint_delivered", (payload: any) => {
+
+
+
+      if (!alive) return;
+
+
+
+      recordEvent({
+
+        id: `${payload?.hint_id ?? crypto.randomUUID()}-event`,
+
+        type: "event:hint_delivered",
+
+        payload,
+
+        ts: Date.now(),
+
+      });
+
+
+
+    });
+
+
+
+    const offClueLegacy = on("clue", (payload: any) => {
+
+
+
+      if (!alive) return;
+
+
+
+      const legacyKind =
+
+        payload?.kind === "crucial"
+
+          ? "crucial"
+
+          : payload?.kind === "red_herring"
+
+          ? "decoratif"
+
+          : "ambigu";
 
 
 
@@ -637,7 +763,7 @@ export default function PlayerRoom() {
 
 
 
-        kind: mapKind(payload?.kind || "") as any,
+        kind: legacyKind as any,
 
 
 
@@ -649,10 +775,26 @@ export default function PlayerRoom() {
 
 
 
-      void syncEvents(false);
+    });
 
 
 
+    const offHintDestroyed = on("event:hint_destroyed", (payload: any) => {
+      if (!alive) return;
+
+      if (payload?.hint_id) {
+        markClueDestroyed(payload.hint_id, {
+          destroyedAt: Date.now(),
+          destroyedBy: payload?.killer_id ?? null,
+        });
+      }
+
+      recordEvent({
+        id: `destroy-${payload?.hint_id ?? crypto.randomUUID()}`,
+        type: "event:hint_destroyed",
+        payload,
+        ts: Date.now(),
+      });
     });
 
 
@@ -811,7 +953,7 @@ export default function PlayerRoom() {
 
     return () => {
 
-
+      listenersReadyRef.current = false;
 
       alive = false;
 
@@ -829,7 +971,13 @@ export default function PlayerRoom() {
 
 
 
-      offClue();
+      offHintDelivered();
+
+      offHintDeliveredEvent();
+
+      offClueLegacy();
+
+      offHintDestroyed();
 
 
 
@@ -857,7 +1005,7 @@ export default function PlayerRoom() {
 
 
 
-  }, [pid, load, recordEvent, addClue, syncEvents]);
+  }, [pid, load, recordEvent, addClue, syncEvents, mapHintToClue, markClueDestroyed]);
 
 
 
@@ -929,7 +1077,7 @@ export default function PlayerRoom() {
 
 
 
-            <h2 className="text-lg font-medium">Flux d’événements</h2>
+            <h2 className="text-lg font-medium">Flux dévénements</h2>
 
 
 
@@ -1149,15 +1297,15 @@ export default function PlayerRoom() {
 
               {!role ? (
 
-                <p>Tu recevras ton rôle dÃ¨s que le MJ l’aura révélé.</p>
+                <p>Tu recevras ton rôle dÃ¨s que le MJ laura révélé.</p>
 
               ) : showRole ? (
 
-                <p className="text-neutral-100">Garde ton rôle secret et utilise-le pour orienter l’enquête.</p>
+                <p className="text-neutral-100">Garde ton rôle secret et utilise-le pour orienter lenquête.</p>
 
               ) : (
 
-                <p>Appuie sur « Afficher » uniquement lorsque tu es prêt à consulter ton rôle.</p>
+                <p>Appuie sur «?Afficher?» uniquement lorsque tu es prêt à consulter ton rôle.</p>
 
               )}
 
@@ -1201,7 +1349,7 @@ export default function PlayerRoom() {
 
               {!mission ? (
 
-                <p>En attente de ta mission secrète. Reste à l’écoute !</p>
+                <p>En attente de ta mission secrète. Reste à lécoute !</p>
 
               ) : showMission ? (
 
@@ -1215,7 +1363,7 @@ export default function PlayerRoom() {
 
               ) : (
 
-                <p>Appuie sur « Afficher » pour lire ta mission secrète en toute discrÃ©tion.</p>
+                <p>Appuie sur «?Afficher?» pour lire ta mission secrète en toute discrÃ©tion.</p>
 
               )}
 
@@ -1226,13 +1374,14 @@ export default function PlayerRoom() {
 
 
           <div className="space-y-2">
-
-            <div className="text-sm font-semibold">Mes enveloppes</div>
-
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-neutral-100">Mes enveloppes</span>
+              <span className="rounded-full bg-neutral-800 px-2 py-0.5 text-xs font-semibold text-neutral-200">
+                {me?.envelopes?.length ?? 0}
+              </span>
+            </div>
             {!me?.envelopes?.length ? (
-
               <p className="text-sm text-muted">Aucune enveloppe pour le moment.</p>
-
             ) : (
 
               <ul className="grid gap-2 sm:grid-cols-2" aria-label="Liste des enveloppes">
@@ -1282,6 +1431,9 @@ export default function PlayerRoom() {
 
 
 }
+
+
+
 
 
 

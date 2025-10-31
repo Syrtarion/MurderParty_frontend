@@ -19,7 +19,7 @@ echo [TIP] Depuis la machine locale :    http://localhost:%PORT%
 echo [TIP] Depuis un autre appareil LAN : http://[IP_LAN]:%PORT%
 echo.
 
-npm run dev -- --hostname 0.0.0.0 --port %PORT%
+npm run test -- --hostname 0.0.0.0 --port %PORT%
 
 echo.
 echo [INFO] Process ended. Press any key to close.

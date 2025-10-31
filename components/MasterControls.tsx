@@ -1,7 +1,7 @@
 'use client';
 
 import { ReactNode, useMemo, useState } from "react";
-import { api } from "@/lib/api";
+import { api, SessionStatus } from "@/lib/api";
 
 type ButtonTone = "neutral" | "primary" | "danger" | "success";
 
@@ -10,9 +10,10 @@ type ActionButtonProps = {
   onClick: () => void;
   busy?: boolean;
   tone?: ButtonTone;
+  disabled?: boolean;
 };
 
-function ActionButton({ children, onClick, busy = false, tone = "neutral" }: ActionButtonProps) {
+function ActionButton({ children, onClick, busy = false, tone = "neutral", disabled = false }: ActionButtonProps) {
   const toneClass: Record<ButtonTone, string> = {
     neutral: "btn-neutral",
     primary: "btn-primary",
@@ -24,8 +25,9 @@ function ActionButton({ children, onClick, busy = false, tone = "neutral" }: Act
     <button
       type="button"
       onClick={onClick}
-      disabled={busy}
+      disabled={busy || disabled}
       aria-busy={busy}
+      aria-disabled={busy || disabled}
       className={`btn-base focus-ring ${toneClass[tone]}`}
     >
       {busy ? (
@@ -42,6 +44,8 @@ function ActionButton({ children, onClick, busy = false, tone = "neutral" }: Act
 
 type MasterControlsProps = {
   onActionDone?: () => void;
+  sessionStatus?: SessionStatus | null;
+  gamePhase?: string | null;
 };
 
 type ControlDescriptor = {
@@ -49,9 +53,10 @@ type ControlDescriptor = {
   label: string;
   tone: ButtonTone;
   run: () => Promise<unknown>;
+  disabled?: boolean;
 };
 
-export default function MasterControls({ onActionDone }: MasterControlsProps) {
+export default function MasterControls({ onActionDone, sessionStatus, gamePhase }: MasterControlsProps) {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string>("Prêt.");
 
@@ -64,17 +69,35 @@ export default function MasterControls({ onActionDone }: MasterControlsProps) {
         result && typeof result === "object"
           ? JSON.stringify(result, null, 2)
           : String(result ?? "OK");
-      setMessage(`✅ ${label}\n${serialised}`);
+      setMessage(`✅ ${label}
+${serialised}`);
       onActionDone?.();
     } catch (error: any) {
-      setMessage(`❌ ${label}\n${error?.message ?? String(error)}`);
+      setMessage(`❌ ${label}
+${error?.message ?? String(error)}`);
     } finally {
       setBusyKey(null);
     }
   }
 
-  const controls: ControlDescriptor[] = useMemo(
-    () => [
+  const nextRoundNumber = useMemo(() => {
+    if (!sessionStatus?.next_round) {
+      return null;
+    }
+    const currentIndex = Number(sessionStatus.round_index ?? 0);
+    return currentIndex + 1;
+  }, [sessionStatus]);
+
+  const alreadyPrepared =
+    nextRoundNumber !== null &&
+    sessionStatus?.prepared_round?.round_index === nextRoundNumber;
+
+  const introStatus = sessionStatus?.intro?.status ?? "pending";
+  const sessionPhaseRaw = (gamePhase ?? "").trim() || sessionStatus?.phase || "";
+  const sessionPhase = sessionPhaseRaw.toUpperCase();
+
+  const controls: ControlDescriptor[] = useMemo(() => {
+    const list: ControlDescriptor[] = [
       {
         key: "start",
         label: "Initialiser la partie",
@@ -105,23 +128,46 @@ export default function MasterControls({ onActionDone }: MasterControlsProps) {
         tone: "primary",
         run: api.postRolesAssign,
       },
-      {
-        key: "session",
-        label: "Lancer la session (à venir)",
-        tone: "neutral",
-        run: async () => {
-          throw new Error("Fonctionnalité à venir (Lot C)");
-        },
-      },
-      {
-        key: "status",
-        label: "Afficher le statut",
-        tone: "neutral",
-        run: api.partyStatus,
-      },
-    ],
-    []
-  );
+    ];
+
+    const canLaunch =
+      sessionPhase === "ROLES_ASSIGNED" &&
+      introStatus !== "preparing" &&
+      introStatus !== "confirmed";
+
+    list.push({
+      key: "launch",
+      label: "Démarrer la partie",
+      tone: "primary",
+      run: () => api.launchParty(),
+      disabled: !canLaunch,
+    });
+
+    list.push({
+      key: "prepare-round",
+      label:
+        nextRoundNumber !== null
+          ? `Préparer le round #${nextRoundNumber}`
+          : "Préparer le prochain round",
+      tone: "primary",
+      run:
+        nextRoundNumber !== null
+          ? () => api.prepareRound(nextRoundNumber)
+          : async () => {
+              throw new Error("Aucun round disponible à préparer");
+            },
+      disabled: nextRoundNumber === null || alreadyPrepared,
+    });
+
+    list.push({
+      key: "status",
+      label: "Afficher le statut",
+      tone: "neutral",
+      run: api.partyStatus,
+    });
+
+    return list;
+  }, [alreadyPrepared, nextRoundNumber, introStatus, sessionPhase]);
 
   return (
     <section className="space-y-4" aria-labelledby="master-controls-heading">
@@ -135,6 +181,7 @@ export default function MasterControls({ onActionDone }: MasterControlsProps) {
             key={control.key}
             tone={control.tone}
             busy={busyKey === control.key}
+            disabled={control.disabled ?? false}
             onClick={() => execute(control.key, control.label, control.run)}
           >
             {control.label}

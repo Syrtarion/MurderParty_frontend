@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import StatusBar from "@/components/StatusBar";
+import { setSessionId as setApiSessionId } from "@/lib/api";
 import { connect, on, isConnected } from "@/lib/socket";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000").replace(
@@ -10,14 +11,14 @@ const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000").r
   ""
 );
 
-async function getState(): Promise<any> {
-  const res = await fetch(`${API_BASE}/game/state`, { cache: "no-store" });
+async function getState(query: string = ""): Promise<any> {
+  const res = await fetch(`${API_BASE}/game/state${query}`, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
   return res.json();
 }
 
-async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+async function postJson<T>(path: string, body: unknown, query: string = ""): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}${query}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -62,11 +63,31 @@ function TabBtn(
   );
 }
 
+function getStoredSessionId(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const stored = window.localStorage.getItem("mp_session_id");
+  if (stored && stored.trim() && stored !== "default") {
+    return stored.trim();
+  }
+  return undefined;
+}
+
+function buildSessionQuery({ joinCode }: { joinCode?: string } = {}): string {
+  const params = new URLSearchParams();
+  const code = joinCode?.trim();
+  if (code) params.set("join_code", code.toUpperCase());
+  const sid = getStoredSessionId();
+  if (sid) params.set("session_id", sid);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
 export default function JoinPage() {
   const router = useRouter();
   const [phaseLabel, setPhaseLabel] = useState<string>("JOIN");
   const [joinLocked, setJoinLocked] = useState<boolean>(false);
   const [tab, setTab] = useState<"create" | "login">("create");
+  const [joinCode, setJoinCode] = useState("");
 
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
@@ -77,7 +98,8 @@ export default function JoinPage() {
 
   const load = useCallback(async () => {
     try {
-      const state = await getState();
+      const query = buildSessionQuery({ joinCode });
+      const state = await getState(query);
       const phase = String(state?.phase_label ?? "JOIN");
       const locked = Boolean(state?.join_locked ?? false);
       setPhaseLabel(phase);
@@ -85,10 +107,25 @@ export default function JoinPage() {
       if (locked && tab === "create") {
         setTab("login");
       }
+      if (state?.session_id && typeof window !== "undefined") {
+        window.localStorage.setItem("mp_session_id", state.session_id);
+        setApiSessionId(state.session_id);
+      }
+      if (!joinCode && typeof state?.join_code === "string" && state.join_code.trim()) {
+        setJoinCode(state.join_code.trim().toUpperCase());
+      }
     } catch {
       // ignored: transient network failure
     }
-  }, [tab]);
+  }, [joinCode, tab]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const storedSession = window.localStorage.getItem("mp_session_id");
+    if (storedSession && storedSession.trim()) {
+      setApiSessionId(storedSession.trim());
+    }
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem("player_id");
@@ -96,6 +133,24 @@ export default function JoinPage() {
       router.push(`/room/${saved}`);
     }
   }, [router]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = params.get("code") || params.get("join_code") || "";
+    const stored = window.localStorage.getItem("mp_join_code") || "";
+    const initial = (fromQuery || stored).trim();
+    if (initial) {
+      setJoinCode(initial.toUpperCase());
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (joinCode.trim()) {
+      window.localStorage.setItem("mp_join_code", joinCode.trim().toUpperCase());
+    }
+  }, [joinCode]);
 
   useEffect(() => {
     let alive = true;
@@ -138,13 +193,23 @@ export default function JoinPage() {
   }, [load]);
 
   async function doRegister() {
+    if (!joinCode.trim()) {
+      setErrorMsg("Code session requis.");
+      return;
+    }
     setLoading(true);
     setErrorMsg(null);
     try {
-      const response: any = await postJson("/auth/register", { name, password });
+      const query = buildSessionQuery({ joinCode });
+      const response: any = await postJson("/auth/register", { name, password }, query);
       const pid = response.player_id || response.id;
       if (!pid) throw new Error("player_id manquant");
       localStorage.setItem("player_id", String(pid));
+      localStorage.setItem("mp_join_code", joinCode.trim().toUpperCase());
+      if (response.session_id) {
+        localStorage.setItem("mp_session_id", String(response.session_id));
+        setApiSessionId(String(response.session_id));
+      }
       router.push(`/room/${pid}`);
     } catch (error: any) {
       setErrorMsg(error?.message || "Impossible de créer le joueur.");
@@ -153,14 +218,25 @@ export default function JoinPage() {
     }
   }
 
+
   async function doLogin() {
+    if (!joinCode.trim()) {
+      setErrorMsg("Code session requis.");
+      return;
+    }
     setLoading(true);
     setErrorMsg(null);
     try {
-      const response: any = await postJson("/auth/login", { name, password });
+      const query = buildSessionQuery({ joinCode });
+      const response: any = await postJson("/auth/login", { name, password }, query);
       const pid = response.player_id || response.id;
       if (!pid) throw new Error("player_id manquant");
       localStorage.setItem("player_id", String(pid));
+      localStorage.setItem("mp_join_code", joinCode.trim().toUpperCase());
+      if (response.session_id) {
+        localStorage.setItem("mp_session_id", String(response.session_id));
+        setApiSessionId(String(response.session_id));
+      }
       router.push(`/room/${pid}`);
     } catch (error: any) {
       setErrorMsg(error?.message || "Connexion impossible. Vérifie nom/mot de passe.");
@@ -196,6 +272,19 @@ export default function JoinPage() {
             </TabBtn>
           </div>
 
+          <div className="mb-4 space-y-1">
+            <label htmlFor="join-code" className="text-xs text-neutral-400">
+              Code session partagé par le MJ
+            </label>
+            <Input
+              id="join-code"
+              placeholder="Ex: ABC123"
+              value={joinCode}
+              onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
+              required
+            />
+          </div>
+
           {tab === "create" && creationOpen && (
             <form
               onSubmit={(event) => {
@@ -218,7 +307,7 @@ export default function JoinPage() {
                 required
               />
               {errorMsg && <div className="text-sm text-rose-300">{errorMsg}</div>}
-              <PrimaryBtn disabled={loading || !name || !password}>
+              <PrimaryBtn disabled={loading || !name || !password || !joinCode.trim()}>
                 {loading ? "Création..." : "Créer mon joueur"}
               </PrimaryBtn>
             </form>
@@ -246,7 +335,7 @@ export default function JoinPage() {
                 required
               />
               {errorMsg && <div className="text-sm text-rose-300">{errorMsg}</div>}
-              <PrimaryBtn disabled={loading || !name || !password}>
+              <PrimaryBtn disabled={loading || !name || !password || !joinCode.trim()}>
                 {loading ? "Connexion..." : "Rejoindre"}
               </PrimaryBtn>
             </form>
@@ -272,3 +361,7 @@ export default function JoinPage() {
     </div>
   );
 }
+
+
+
+
