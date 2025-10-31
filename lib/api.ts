@@ -556,6 +556,13 @@ export const api = {
     const query = options?.useLLMIntro === false ? "?use_llm_intro=false" : "";
     return sessionFetch(`${API_BASE}/party/launch${query}`, { method: "POST" });
   },
+  startNextRound: (options?: { autoPrepareRound?: boolean; useLLMRounds?: boolean }): Promise<any> => {
+    const params = new URLSearchParams();
+    if (options?.autoPrepareRound === false) params.set("auto_prepare_round", "false");
+    if (options?.useLLMRounds === false) params.set("use_llm_rounds", "false");
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return sessionFetch(`${API_BASE}/session/start_next${suffix}`, { method: "POST" });
+  },
 
 
   sessionStatus: (): Promise<SessionStatus> =>

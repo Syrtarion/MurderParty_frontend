@@ -88,6 +88,10 @@ ${error?.message ?? String(error)}`);
     return currentIndex + 1;
   }, [sessionStatus]);
 
+  const totalRounds = Number(sessionStatus?.total_rounds ?? 0);
+  const currentRoundIndex = Number(sessionStatus?.round_index ?? 0);
+  const hasRemainingRound = totalRounds === 0 || currentRoundIndex < totalRounds;
+
   const alreadyPrepared =
     nextRoundNumber !== null &&
     sessionStatus?.prepared_round?.round_index === nextRoundNumber;
@@ -95,6 +99,12 @@ ${error?.message ?? String(error)}`);
   const introStatus = sessionStatus?.intro?.status ?? "pending";
   const sessionPhaseRaw = (gamePhase ?? "").trim() || sessionStatus?.phase || "";
   const sessionPhase = sessionPhaseRaw.toUpperCase();
+
+  const canStartRound =
+    introStatus === "confirmed" &&
+    hasRemainingRound &&
+    sessionPhase !== "INTRO" &&
+    sessionPhase !== "ACTIVE";
 
   const controls: ControlDescriptor[] = useMemo(() => {
     const list: ControlDescriptor[] = [
@@ -144,6 +154,14 @@ ${error?.message ?? String(error)}`);
     });
 
     list.push({
+      key: "launch-round",
+      label: "Lancer le round",
+      tone: "primary",
+      run: () => api.startNextRound(),
+      disabled: !canStartRound,
+    });
+
+    list.push({
       key: "prepare-round",
       label:
         nextRoundNumber !== null
@@ -167,7 +185,7 @@ ${error?.message ?? String(error)}`);
     });
 
     return list;
-  }, [alreadyPrepared, nextRoundNumber, introStatus, sessionPhase]);
+  }, [alreadyPrepared, nextRoundNumber, introStatus, sessionPhase, canStartRound]);
 
   return (
     <section className="space-y-4" aria-labelledby="master-controls-heading">
